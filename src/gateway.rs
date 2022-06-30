@@ -48,7 +48,7 @@ pub async fn check_gateways(custom_timeout_secs: Option<u64>) -> Vec<(&'static s
 }
 
 /// The gateway data source: [gateways.json](https://github.com/ipfs/public-gateway-checker/blob/master/src/gateways.json)
-static GATEWAYS: [&'static str; 95] = [
+static GATEWAYS: [&str; 95] = [
     "https://ipfs.io/ipfs/",
     "https://dweb.link/ipfs/",
     "https://gateway.ipfs.io/ipfs/",
@@ -146,7 +146,7 @@ static GATEWAYS: [&'static str; 95] = [
     "https://ipfs.litnet.work/ipfs/",
 ];
 
-const GATEWAY_CHECKER_CID: &'static str =
+const GATEWAY_CHECKER_CID: &str =
     "bafybeifx7yeb55armcsxwwitkymga5xf53dxiarykms3ygqic223w5sk3m";
 
-const GATEWAY_CHECK_WORDS: &'static str = "Hello from IPFS Gateway Checker";
+const GATEWAY_CHECK_WORDS: &str = "Hello from IPFS Gateway Checker";

@@ -12,4 +12,12 @@
 //! * `all`: Enables all the features listed above.
 //! 
 
+pub mod api;
+pub mod client;
 pub mod gateway;
+
+#[cfg(feature = "encryption")]
+pub mod crypto;
+
+#[cfg(feature = "compression")]
+pub mod compression;
