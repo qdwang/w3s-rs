@@ -1,10 +1,11 @@
 //! w3s is a crate to handle <https://web3.storage/> API.
 //! 
 //! These operations are supported.
-//! 1. Uploads one file with size split, encryption and compression.
-//! 2. Checks uploaded files.
-//! 3. Checks IPFS gateways availability.
-//! 4. Downloads uploaded file with auto merge, decryption and decompression.
+//! * Uploads files with encryption and compression.
+//! * CAR file uploading is supported.
+//! * Checks uploaded files.
+//! * Checks IPFS gateways availability.
+//! * Downloads uploaded file with auto merge, decryption and decompression.
 //! 
 //! ## Feature flags
 //! * `encryption`: Enables encryption during the uploading process and decryption during the downloading process.
@@ -15,9 +16,4 @@
 pub mod api;
 pub mod client;
 pub mod gateway;
-
-#[cfg(feature = "encryption")]
-pub mod crypto;
-
-#[cfg(feature = "compression")]
-pub mod compression;
+pub mod writer;

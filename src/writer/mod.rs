@@ -2,37 +2,31 @@ use std::io;
 
 pub mod car;
 
-pub mod general;
+pub mod splitter;
+pub mod uploader;
 
 #[cfg(feature = "encryption")]
 pub mod crypto;
 
-#[cfg(feature = "compression")]
-pub mod compression;
-
 pub trait ChainWrite<W: io::Write>: io::Write {
-    fn pass2next_writer(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if let Some(next_writer) = self.next_writer() {
-            next_writer.write(buf)?;
-            Ok(buf.len())
-        } else {
-            Ok(0)
-        }
+    fn write2next(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.next_writer().write(buf)?;
+        Ok(buf.len())
     }
-    fn next_writer(&mut self) -> Option<&mut W>;
-    fn next(self) -> Option<W>;
+    fn next_writer(&mut self) -> &mut W;
+    fn next(self) -> W;
 }
 
-macro_rules! take_nth_next {
+macro_rules! take_nth_writer {
     ($w:ident $($tails:tt)*) => {
-        take_nth_next!(@next(ChainWrite::next($w)) $($tails)*)
+        take_nth_writer!(@next(ChainWrite::next($w)) $($tails)*)
     };
     (@next($($x:tt)*) > $($tails:tt)*) => {
-        take_nth_next!(@next(Option::and_then($($x)*, |x| x.next())) $($tails)*)
+        // take_nth_next!(@next(Option::and_then($($x)*, |x| x.next())) $($tails)*)
+        take_nth_writer!(@next(ChainWrite::next($($x)*)) $($tails)*)
     };
     (@next($($x:tt)*)) => {
         $($x)*
     };
 }
-pub(crate) use take_nth_next; 
-
+pub(crate) use take_nth_writer;
