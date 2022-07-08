@@ -23,13 +23,13 @@ impl<W: io::Write> io::Write for PlainSplitter<W> {
         self.chunk.extend(buf);
         if self.chunk.len() > MAX_CHUNK_SIZE {
             let chunk = mem::replace(&mut self.chunk, vec![]);
-            self.write2next(&chunk)?;
+            self.write2next(&chunk, false)?;
         }
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
         let chunk = mem::replace(&mut self.chunk, vec![]);
-        self.write2next(&chunk)?;
+        self.write2next(&chunk, true)?;
         Ok(())
     }
 }
