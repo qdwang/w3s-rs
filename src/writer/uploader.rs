@@ -37,7 +37,8 @@ impl fmt::Display for UploadType {
     }
 }
 
-type ProgressListener = Arc<Mutex<dyn FnMut(Arc<String>, usize, usize, usize) + Send + Sync + 'static>>;
+type ProgressListener =
+    Arc<Mutex<dyn FnMut(Arc<String>, usize, usize, usize) + Send + Sync + 'static>>;
 pub struct Uploader {
     upload_type: UploadType,
     auth_token: Arc<String>,
@@ -75,21 +76,19 @@ impl Uploader {
         name: Arc<String>,
         part: usize,
         auth_token: Arc<String>,
-        content: Vec<u8>,
+        data: Arc<Vec<u8>>,
         progress_listener: Option<ProgressListener>,
     ) -> Result<Cid, Error> {
         let api = Arc::new(format!("https://api.web3.storage/{}", upload_type));
-        
+
         let upload_fn = || {
-            let body = match progress_listener.clone() {
-                Some(pl) => Body::wrap_stream(ProgressStream {
-                    name: name.clone(),
-                    part,
-                    cursor: Cursor::new(content.clone()),
-                    progress_listener: pl,
-                }),
-                None => Body::from(content.clone()),
-            };
+            let body = Body::wrap_stream(ProgressStream {
+                name: name.clone(),
+                part,
+                data: data.clone(),
+                cursor: 0,
+                progress_listener: progress_listener.clone(),
+            });
 
             Client::new()
                 .post(api.clone().as_str())
@@ -120,7 +119,7 @@ impl io::Write for Uploader {
             self.name.clone(),
             self.tasks.len(),
             self.auth_token.clone(),
-            buf.to_vec(),
+            Arc::new(buf.to_vec()),
             self.progress_listener.clone(),
         );
         let handler = tokio::spawn(upload_future);
@@ -141,8 +140,9 @@ struct Response {
 pub struct ProgressStream {
     name: Arc<String>,
     part: usize,
-    cursor: Cursor<Vec<u8>>,
-    progress_listener: ProgressListener,
+    data: Arc<Vec<u8>>,
+    cursor: usize,
+    progress_listener: Option<ProgressListener>,
 }
 impl futures::Stream for ProgressStream {
     type Item = io::Result<Vec<u8>>;
@@ -151,22 +151,24 @@ impl futures::Stream for ProgressStream {
         mut self: std::pin::Pin<&mut Self>,
         _: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        let total_len = self.cursor.get_ref().len();
-        let remain_len = total_len - self.cursor.position() as usize;
+        let total_len = self.data.len();
+        let remain_len = total_len - self.cursor;
 
         if remain_len == 0 {
             Poll::Ready(None)
         } else {
             let mut result = vec![0u8; cmp::min(remain_len, 1024 * 32)];
-            match self.cursor.read_exact(&mut result) {
-                Err(_) => Poll::Ready(None),
-                Ok(()) => {
-                    if let Ok(mut f) = (self.progress_listener).lock() {
-                        f(self.name.clone(), self.part, self.cursor.position() as usize, total_len);
-                    }
-                    Poll::Ready(Some(Ok(result)))
+            let start_index = self.cursor;
+            self.cursor += result.len();
+            result.copy_from_slice(&self.data[start_index..self.cursor]);
+
+            if let Some(pl) = self.progress_listener.as_ref() {
+                if let Ok(mut f) = pl.lock() {
+                    f(self.name.clone(), self.part, self.cursor, total_len);
                 }
             }
+
+            Poll::Ready(Some(Ok(result)))
         }
     }
 }
