@@ -4,13 +4,15 @@ use futures::TryFutureExt;
 use reqwest::{Body, Client};
 use serde::Deserialize;
 use std::{
-    cmp, fmt,
-    io::{self, Cursor, Read},
+    cmp, fmt, io, mem,
     str::FromStr,
     sync::{Arc, Mutex},
 };
 use thiserror::Error;
-use tokio::task::{JoinError, JoinHandle};
+use tokio::{
+    runtime::Handle,
+    task::{JoinError, JoinHandle},
+};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -43,7 +45,9 @@ pub struct Uploader {
     upload_type: UploadType,
     auth_token: Arc<String>,
     name: Arc<String>,
+    max_connection: usize,
     tasks: Vec<JoinHandle<Result<Cid, Error>>>,
+    results: Vec<Cid>,
     progress_listener: Option<ProgressListener>,
 }
 
@@ -52,22 +56,44 @@ impl Uploader {
         auth_token: String,
         name: String,
         upload_type: UploadType,
+        max_connection: usize,
         progress_listener: Option<ProgressListener>,
     ) -> Self {
         Uploader {
             upload_type,
             auth_token: Arc::new(auth_token),
             name: Arc::new(name),
+            max_connection,
             tasks: vec![],
+            results: vec![],
             progress_listener,
         }
     }
 
-    pub async fn results(self) -> Result<Vec<Cid>, Error> {
-        let mut results = Vec::with_capacity(self.tasks.len());
-        for task in self.tasks {
+    pub fn pause_to_complete_tasks(&mut self) {
+        if self.tasks.len() == self.max_connection {
+            tokio::task::block_in_place(|| {
+                let result = Handle::current().block_on(self.finish_results(false));
+                if let Ok(cid_vec) = result {
+                    self.results.extend(cid_vec);
+                }
+            });
+        }
+    }
+
+    pub async fn finish_results(&mut self, with_prev: bool) -> Result<Vec<Cid>, Error> {
+        let tasks = mem::replace(&mut self.tasks, vec![]);
+
+        let mut results = if with_prev {
+            mem::replace(&mut self.results, vec![])
+        } else {
+            Vec::with_capacity(tasks.len())
+        };
+
+        for task in tasks {
             results.push(task.await??);
         }
+
         Ok(results)
     }
 
@@ -114,6 +140,8 @@ impl Uploader {
 
 impl io::Write for Uploader {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.pause_to_complete_tasks();
+
         let upload_future = Uploader::upload(
             self.upload_type,
             self.name.clone(),
@@ -124,6 +152,7 @@ impl io::Write for Uploader {
         );
         let handler = tokio::spawn(upload_future);
         self.tasks.push(handler);
+
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
