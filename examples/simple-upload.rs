@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
+use std::sync::{Arc, Mutex};
 use w3s::writer::{splitter, uploader};
 
 #[tokio::main]
@@ -16,6 +17,9 @@ async fn main() -> Result<()> {
                 auth_token.clone(),
                 "filename".to_owned(),
                 uploader::UploadType::Upload,
+                Some(Arc::new(Mutex::new(|name, part, pos, total| {
+                    println!("name: {name} part:{part} {pos}/{total}");
+                }))),
             );
             let mut splitter = splitter::PlainSplitter::new(uploader);
 

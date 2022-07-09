@@ -1,8 +1,14 @@
 use cid::Cid;
+use core::task::Poll;
 use futures::TryFutureExt;
-use reqwest::Client;
+use reqwest::{Body, Client};
 use serde::Deserialize;
-use std::{fmt, io, str::FromStr};
+use std::{
+    cmp, fmt,
+    io::{self, Cursor, Read},
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 use thiserror::Error;
 use tokio::task::{JoinError, JoinHandle};
 
@@ -31,25 +37,28 @@ impl fmt::Display for UploadType {
     }
 }
 
+type ProgressListener = Arc<Mutex<dyn FnMut(Arc<String>, usize, usize, usize) + Send + Sync + 'static>>;
 pub struct Uploader {
     upload_type: UploadType,
-    auth_token: String,
-    name: String,
+    auth_token: Arc<String>,
+    name: Arc<String>,
     tasks: Vec<JoinHandle<Result<Cid, Error>>>,
-}
-
-#[derive(Deserialize)]
-struct Response {
-    cid: String,
+    progress_listener: Option<ProgressListener>,
 }
 
 impl Uploader {
-    pub fn new(auth_token: String, name: String, upload_type: UploadType) -> Self {
+    pub fn new(
+        auth_token: String,
+        name: String,
+        upload_type: UploadType,
+        progress_listener: Option<ProgressListener>,
+    ) -> Self {
         Uploader {
             upload_type,
-            auth_token,
-            name,
+            auth_token: Arc::new(auth_token),
+            name: Arc::new(name),
             tasks: vec![],
+            progress_listener,
         }
     }
 
@@ -62,19 +71,32 @@ impl Uploader {
     }
 
     pub async fn upload(
-        name: String,
         upload_type: UploadType,
-        auth_token: String,
+        name: Arc<String>,
+        part: usize,
+        auth_token: Arc<String>,
         content: Vec<u8>,
+        progress_listener: Option<ProgressListener>,
     ) -> Result<Cid, Error> {
-        let api = format!("https://api.web3.storage/{}", upload_type);
+        let api = Arc::new(format!("https://api.web3.storage/{}", upload_type));
+        
         let upload_fn = || {
+            let body = match progress_listener.clone() {
+                Some(pl) => Body::wrap_stream(ProgressStream {
+                    name: name.clone(),
+                    part,
+                    cursor: Cursor::new(content.clone()),
+                    progress_listener: pl,
+                }),
+                None => Body::from(content.clone()),
+            };
+
             Client::new()
-                .post(api.clone())
-                .header("X-NAME", name.clone())
+                .post(api.clone().as_str())
+                .header("X-NAME", name.clone().as_str())
                 .header("accept", "application/json")
                 .bearer_auth(auth_token.clone())
-                .body(content.clone())
+                .body(body)
                 .send()
                 .and_then(|x| x.text())
         };
@@ -94,10 +116,12 @@ impl Uploader {
 impl io::Write for Uploader {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let upload_future = Uploader::upload(
-            self.name.clone(),
             self.upload_type,
+            self.name.clone(),
+            self.tasks.len(),
             self.auth_token.clone(),
             buf.to_vec(),
+            self.progress_listener.clone(),
         );
         let handler = tokio::spawn(upload_future);
         self.tasks.push(handler);
@@ -105,5 +129,44 @@ impl io::Write for Uploader {
     }
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+#[derive(Deserialize)]
+struct Response {
+    cid: String,
+}
+
+#[derive(Clone)]
+pub struct ProgressStream {
+    name: Arc<String>,
+    part: usize,
+    cursor: Cursor<Vec<u8>>,
+    progress_listener: ProgressListener,
+}
+impl futures::Stream for ProgressStream {
+    type Item = io::Result<Vec<u8>>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let total_len = self.cursor.get_ref().len();
+        let remain_len = total_len - self.cursor.position() as usize;
+
+        if remain_len == 0 {
+            Poll::Ready(None)
+        } else {
+            let mut result = vec![0u8; cmp::min(remain_len, 1024 * 32)];
+            match self.cursor.read_exact(&mut result) {
+                Err(_) => Poll::Ready(None),
+                Ok(()) => {
+                    if let Ok(mut f) = (self.progress_listener).lock() {
+                        f(self.name.clone(), self.part, self.cursor.position() as usize, total_len);
+                    }
+                    Poll::Ready(Some(Ok(result)))
+                }
+            }
+        }
     }
 }
