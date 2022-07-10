@@ -13,15 +13,17 @@ reqwest = { version = "0.11", features = ["stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "io-util"] }
 
 # for ipfs car file creation
-iroh-car = { version= "0.1", path = "iroh-car" }
 multihash = "0.16"
 cid = "0.8"
+ipld = { package = "libipld", version = "0.13"}
+ipld-cbor = { package = "libipld-cbor", version = "0.13" }
 ipld-pb = { package = "libipld-pb", version = "0.13" }
 unixfs-v1 = "0.2"
 quick-protobuf = "0.8"
+integer-encoding = { version = "3.0", features = ["tokio_async"] }
 
 # --- optional ---
 rand = { version = "0.8", optional = true }

@@ -2,7 +2,7 @@ use cid::Cid;
 use ipld::codec::Codec;
 use ipld_cbor::DagCborCodec;
 
-use crate::error::Error;
+use super::error::Error;
 
 /// A car header.
 #[derive(Debug, Clone, PartialEq)]
