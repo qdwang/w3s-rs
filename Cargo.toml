@@ -5,7 +5,7 @@ version = "0.1.0-alpha"
 
 [dev-dependencies]
 anyhow = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros"] }
 
 [dependencies]
 futures = "0.3"
@@ -13,7 +13,7 @@ reqwest = { version = "0.11", features = ["stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
-tokio = { version = "1", features = ["rt", "io-util"] }
+tokio = { version = "1", features = ["rt", "io-util", "rt-multi-thread"] }
 
 # for ipfs car file creation
 multihash = "0.16"
