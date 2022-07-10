@@ -45,7 +45,7 @@ pub struct Uploader {
     upload_type: UploadType,
     auth_token: Arc<String>,
     name: Arc<String>,
-    max_connection: usize,
+    max_concurrent: usize,
     tasks: Vec<JoinHandle<Result<Cid, Error>>>,
     results: Vec<Cid>,
     progress_listener: Option<ProgressListener>,
@@ -56,14 +56,14 @@ impl Uploader {
         auth_token: String,
         name: String,
         upload_type: UploadType,
-        max_connection: usize,
+        max_concurrent: usize,
         progress_listener: Option<ProgressListener>,
     ) -> Self {
         Uploader {
             upload_type,
             auth_token: Arc::new(auth_token),
             name: Arc::new(name),
-            max_connection,
+            max_concurrent,
             tasks: vec![],
             results: vec![],
             progress_listener,
@@ -71,30 +71,36 @@ impl Uploader {
     }
 
     pub fn pause_to_complete_tasks(&mut self) {
-        if self.tasks.len() == self.max_connection {
+        if self.tasks.len() == self.max_concurrent {
             tokio::task::block_in_place(|| {
-                let result = Handle::current().block_on(self.finish_results(false));
-                if let Ok(cid_vec) = result {
-                    self.results.extend(cid_vec);
+                let result = Handle::current().block_on(self.finish_any_result());
+                if let Ok(cid) = result {
+                    self.results.push(cid);
                 }
             });
         }
     }
 
-    pub async fn finish_results(&mut self, with_prev: bool) -> Result<Vec<Cid>, Error> {
+    pub async fn finish_results(&mut self) -> Result<Vec<Cid>, Error> {
         let tasks = mem::replace(&mut self.tasks, vec![]);
 
-        let mut results = if with_prev {
-            mem::replace(&mut self.results, vec![])
-        } else {
-            Vec::with_capacity(tasks.len())
-        };
+        let mut results = mem::replace(&mut self.results, vec![]);
 
         for task in tasks {
             results.push(task.await??);
         }
 
         Ok(results)
+    }
+
+    pub async fn finish_any_result(&mut self) -> Result<Cid, Error> {
+        let tasks = mem::replace(&mut self.tasks, vec![]);
+
+        let (result, remnant) = futures::future::select_ok(tasks).await?;
+
+        self.tasks = remnant;
+
+        result
     }
 
     pub async fn upload(
@@ -140,12 +146,10 @@ impl Uploader {
 
 impl io::Write for Uploader {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.pause_to_complete_tasks();
-
         let upload_future = Uploader::upload(
             self.upload_type,
             self.name.clone(),
-            self.tasks.len(),
+            self.tasks.len() + self.results.len(),
             self.auth_token.clone(),
             Arc::new(buf.to_vec()),
             self.progress_listener.clone(),
@@ -153,9 +157,19 @@ impl io::Write for Uploader {
         let handler = tokio::spawn(upload_future);
         self.tasks.push(handler);
 
-        Ok(buf.len())
+        if self.tasks.len() == self.max_concurrent {
+            // abnormal written len can tell the parent Writer to call `flush` after this `write` function.
+            // you shouldn't call `self.flush()` directly because it can't drop the outside Vec to release memory
+            // when pause the thread to await async uploading jobs.
+            Ok(0)
+        } else {
+            Ok(buf.len())
+        }
     }
+
+    // this `flush` function is to complete concurrent uploading connections by blocking current thread.
     fn flush(&mut self) -> io::Result<()> {
+        self.pause_to_complete_tasks();
         Ok(())
     }
 }

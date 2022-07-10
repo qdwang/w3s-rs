@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
                 auth_token.clone(),
                 "filename".to_owned(),
                 uploader::UploadType::Upload,
-                1,
+                2,
                 Some(Arc::new(Mutex::new(|name, part, pos, total| {
                     println!("name: {name} part:{part} {pos}/{total}");
                 }))),
@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
             splitter.flush()?;
 
             let mut uploader = w3s::take_nth_writer!(splitter);
-            let results = uploader.finish_results(true).await?;
+            let results = uploader.finish_results().await?;
             println!("{:?}", results);
 
             Ok(())
