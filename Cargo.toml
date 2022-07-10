@@ -16,7 +16,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["rt"] }
 
 # for ipfs car file creation
-iroh-car = { path = "iroh-car" }
+iroh-car = { version= "0.1", path = "iroh-car" }
 multihash = "0.16"
 cid = "0.8"
 ipld-pb = { package = "libipld-pb", version = "0.13" }
