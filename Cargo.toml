@@ -21,7 +21,7 @@ tokio = { version = "1", features = ["rt", "io-util", "rt-multi-thread"] }
 # for ipfs car file creation
 multihash = "0.16"
 cid = "0.8"
-ipld = { package = "libipld", version = "0.13"}
+ipld = { package = "libipld", version = "0.13" }
 ipld-cbor = { package = "libipld-cbor", version = "0.13" }
 ipld-pb = { package = "libipld-pb", version = "0.13" }
 unixfs-v1 = "0.2"
@@ -32,11 +32,14 @@ integer-encoding = { version = "3.0", features = ["tokio_async"] }
 rand = { version = "0.8", optional = true }
 
 ## encryption
-aes-gcm = { version = "0.9", optional = true }
 argon2 = { version = "0.4", optional = true }
+chacha20 = { version = "0.9", optional = true }
+poly1305 = { version = "0.7", optional = true }
+aead = { version = "0.4", optional = true }
+zeroize = { version = "1", optional = true }
 
 ## compression
 zstd = { version = "0.11", optional = true }
 
 [features]
-encryption = ["rand", "aes-gcm", "argon2"]
+encryption = ["rand", "argon2", "chacha20", "poly1305", "aead", "zeroize"]
