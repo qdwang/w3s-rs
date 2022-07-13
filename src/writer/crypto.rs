@@ -1,23 +1,36 @@
-use aead::generic_array::{ArrayLength, GenericArray};
+use aead::generic_array::GenericArray;
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::XChaCha20;
 use poly1305::universal_hash::{NewUniversalHash, UniversalHash};
-use poly1305::{Key, Poly1305};
+use poly1305::Poly1305;
 use rand::prelude::*;
 use thiserror::Error;
 use zeroize::Zeroize;
 
+use super::*;
+use std::{io, mem};
+
 const SALT_SIZE: usize = 8;
 const NONCE_SIZE: usize = 24;
-const BLOCK_SIZE: u64 = 64;
+const BLOCK_SIZE: usize = 64;
 
-pub struct Cipher {
+/// The cipher will pass `[salt][nonce][encrypted data][mac]` to the next writer.
+/// All the `[salt][nonce][encrypted data]` parts will be updated into MAC.
+/// 
+/// This stream cipher is compatible to the `chacha20poly1305` crate.
+/// But if you are using `chacha20poly1305` crate to decrypt the file,
+/// you have to use `cipher.decrypt_in_place(nonce, salt + nonce, &mut buffer).unwrap()` to 
+/// get the correct result. 
+pub struct Cipher<W: io::Write> {
     cipher: XChaCha20,
     mac: Poly1305,
-    encrypted_len: usize,
+    is_prefix_written: bool,
+    remnant2mac: Vec<u8>,
+    content_len: usize,
     salt: [u8; SALT_SIZE],
     nonce: [u8; NONCE_SIZE],
+    next_writer: W,
 }
 
 #[derive(Error, Debug)]
@@ -32,32 +45,34 @@ pub enum Error {
     TooShortForNonce,
 }
 
-impl Cipher {
-    pub fn new(pwd: &[u8]) -> Result<Cipher, Error> {
+impl<W: io::Write> Cipher<W> {
+    pub fn new(pwd: &mut [u8], next_writer: W) -> Result<Cipher<W>, Error> {
         let mut rng = rand::thread_rng();
         let mut salt = [0u8; SALT_SIZE];
         let mut nonce = [0u8; NONCE_SIZE];
         rng.fill_bytes(&mut salt);
         rng.fill_bytes(&mut nonce);
 
-        Self::new_with_details(pwd, salt, nonce)
+        Self::new_with_details(pwd, salt, nonce, next_writer)
     }
 
     fn new_with_details(
-        pwd: &[u8],
+        pwd: &mut [u8],
         salt: [u8; SALT_SIZE],
         nonce: [u8; NONCE_SIZE],
-    ) -> Result<Cipher, Error> {
+        next_writer: W,
+    ) -> Result<Cipher<W>, Error> {
         let salt_string = SaltString::b64_encode(&salt).map_err(|e| Error::PasswordHashError(e))?;
 
         let hashed_pwd = Argon2::default()
-            .hash_password(pwd, &salt_string)
+            .hash_password(&pwd, &salt_string)
             .map_err(|e| Error::PasswordHashError(e))?
             .hash
             .ok_or(Error::HashResultError)?;
 
-        let key = Key::from_slice(hashed_pwd.as_bytes());
-        let mut cipher = XChaCha20::new(key.into(), &nonce.into());
+        pwd.zeroize();
+
+        let mut cipher = XChaCha20::new(hashed_pwd.as_bytes().into(), &nonce.into());
 
         // init for mac
         let mut mac_key = poly1305::Key::default();
@@ -71,26 +86,93 @@ impl Cipher {
         Ok(Cipher {
             cipher,
             mac,
-            encrypted_len: 0,
+            is_prefix_written: false,
+            remnant2mac: vec![],
+            content_len: 0,
             salt,
             nonce,
+            next_writer,
         })
+    }
+
+    fn update_mac(&mut self, buf: &[u8], keep_remnant : bool) {
+        let mut buf2mac = mem::replace(&mut self.remnant2mac, vec![]);
+        buf2mac.extend(buf);
+
+        if keep_remnant {
+            match buf2mac.len() / BLOCK_SIZE {
+                0 => self.remnant2mac = buf2mac,
+                x => {
+                    let index = x * BLOCK_SIZE;
+                    self.mac.update_padded(&buf2mac[..index]);
+                    self.content_len += index;
+                    self.remnant2mac = buf2mac[index..].to_vec();
+                }
+            }
+        } else {
+            self.mac.update_padded(&buf2mac);
+            self.content_len += buf2mac.len();
+        }
     }
 
     pub fn encrypt(&mut self, bytes: &[u8]) -> Vec<u8> {
         let mut buffer = bytes.to_vec();
+
         self.cipher.apply_keystream(&mut buffer);
-        self.mac.update_padded(&buffer);
-        self.encrypted_len += buffer.len();
+        self.update_mac(&buffer, true);
+
         buffer
     }
 
     pub fn finalize_mac(&mut self) -> Vec<u8> {
         let mut block = GenericArray::default();
-        block[..8].copy_from_slice(&0u64.to_le_bytes());
-        block[8..].copy_from_slice(&(self.encrypted_len as u64).to_le_bytes());
+        // for associated_data
+        block[..8].copy_from_slice(&((SALT_SIZE + NONCE_SIZE) as u64).to_le_bytes());
+        // for content data
+        block[8..].copy_from_slice(&(self.content_len as u64).to_le_bytes());
 
         self.mac.update(&block);
         self.mac.to_owned().finalize().into_bytes().to_vec()
+    }
+}
+
+impl<W: io::Write> io::Write for Cipher<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if !self.is_prefix_written {
+            // add salt and nonce to the start to enable streaming decryption when downloading the file
+            let mut prefix = Vec::with_capacity(SALT_SIZE + NONCE_SIZE);
+            prefix.extend(self.salt);
+            prefix.extend(self.nonce);
+            
+            self.next_writer().write(&prefix)?;
+            // use salt + nonce as associated_data to update the mac
+            self.mac.update_padded(&prefix);
+
+            self.is_prefix_written = true;
+        }
+
+        let encrypted = self.encrypt(&buf);
+        // since the Upload writer shouldn't be the next one, there is no needs to handle the 0 written length condition.
+        self.next_writer().write(&encrypted)?;
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.update_mac(&[], false);
+        
+        let mac = self.finalize_mac();
+        self.next_writer().write(&mac)?;
+
+        self.next_writer().flush()?;
+
+        Ok(())
+    }
+}
+
+impl<W: io::Write> ChainWrite<W> for Cipher<W> {
+    fn next(self) -> W {
+        self.next_writer
+    }
+    fn next_writer(&mut self) -> &mut W {
+        &mut self.next_writer
     }
 }

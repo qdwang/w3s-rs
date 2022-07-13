@@ -24,7 +24,7 @@ impl<W: io::Write> io::Write for PlainSplitter<W> {
         if self.chunk.len() > MAX_CHUNK_SIZE {
             let written_len = {
                 let chunk = mem::replace(&mut self.chunk, vec![]);
-                self.write2next(&chunk)?
+                self.next_writer().write(&chunk)?
             };
 
             // the written length result won't propagate
@@ -39,7 +39,7 @@ impl<W: io::Write> io::Write for PlainSplitter<W> {
     fn flush(&mut self) -> io::Result<()> {
         {
             let chunk = mem::replace(&mut self.chunk, vec![]);
-            self.write2next(&chunk)?;
+            self.next_writer().write(&chunk)?;
         }
         self.next_writer().flush()?;
         Ok(())

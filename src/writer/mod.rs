@@ -9,10 +9,6 @@ pub mod uploader;
 pub mod crypto;
 
 pub trait ChainWrite<W: io::Write>: io::Write {
-    fn write2next(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = self.next_writer().write(buf)?;
-        Ok(len)
-    }
     fn next_writer(&mut self) -> &mut W;
     fn next(self) -> W;
 }
