@@ -10,29 +10,7 @@ async fn main() -> Result<()> {
     let args = env::args().collect::<Vec<_>>();
 
     match args.as_slice() {
-        [_, path, auth_token] => {
-            let mut file = File::open(path)?;
-
-            let uploader = uploader::Uploader::new(
-                auth_token.clone(),
-                "filename".to_owned(),
-                uploader::UploadType::Upload,
-                2,
-                Some(Arc::new(Mutex::new(|name, part, pos, total| {
-                    println!("name: {name} part:{part} {pos}/{total}");
-                }))),
-            );
-            let mut splitter = splitter::PlainSplitter::new(uploader);
-
-            io::copy(&mut file, &mut splitter)?;
-            splitter.flush()?;
-
-            let mut uploader = w3s::take_nth_writer!(splitter);
-            let results = uploader.finish_results().await?;
-            println!("results: {:?}", results);
-
-            Ok(())
-        }
+        [_, path, auth_token] => upload(path, auth_token).await,
         _ => panic!(
             "
         Please input file path and web3.storage auth token
@@ -41,4 +19,28 @@ async fn main() -> Result<()> {
         "
         ),
     }
+}
+
+async fn upload(path: &String, auth_token: &String) -> Result<()> {
+    let mut file = File::open(path)?;
+
+    let uploader = uploader::Uploader::new(
+        auth_token.clone(),
+        "filename".to_owned(),
+        uploader::UploadType::Upload,
+        2,
+        Some(Arc::new(Mutex::new(|name, part, pos, total| {
+            println!("name: {name} part:{part} {pos}/{total}");
+        }))),
+    );
+    let mut splitter = splitter::PlainSplitter::new(uploader);
+
+    io::copy(&mut file, &mut splitter)?;
+    splitter.flush()?;
+
+    let mut uploader = w3s::take_nth_writer!(splitter);
+    let results = uploader.finish_results().await?;
+    println!("results: {:?}", results);
+
+    Ok(())
 }
