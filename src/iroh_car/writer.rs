@@ -1,6 +1,5 @@
 use cid::Cid;
-use integer_encoding::VarIntAsyncWriter;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use integer_encoding::VarIntWriter;
 
 use super::{error::Error, header::CarHeader};
 
@@ -14,7 +13,7 @@ pub struct CarWriter<W> {
 
 impl<W> CarWriter<W>
 where
-    W: AsyncWrite + Send + Unpin,
+    W: std::io::Write + Send + Unpin,
 {
     pub fn new(header: CarHeader, writer: W) -> Self {
         CarWriter {
@@ -26,41 +25,41 @@ where
     }
 
     /// Writes header and stream of data to writer in Car format.
-    pub async fn write<T>(&mut self, cid: Cid, data: T) -> Result<(), Error>
+    pub fn write<T>(&mut self, cid: Cid, data: T) -> Result<(), Error>
     where
         T: AsRef<[u8]>,
     {
         if !self.is_header_written {
             // Write header bytes
             let header_bytes = self.header.encode()?;
-            self.writer.write_varint_async(header_bytes.len()).await?;
-            self.writer.write_all(&header_bytes).await?;
+            self.writer.write_varint(header_bytes.len())?;
+            self.writer.write_all(&header_bytes)?;
             self.is_header_written = true;
         }
 
         // Write the given block.
         self.cid_buffer.clear();
-        cid.write_bytes(&mut self.cid_buffer).expect("vec write");
+        cid.write_bytes(&mut self.cid_buffer)?;
 
         let data = data.as_ref();
         let len = self.cid_buffer.len() + data.len();
 
-        self.writer.write_varint_async(len).await?;
-        self.writer.write_all(&self.cid_buffer).await?;
-        self.writer.write_all(data).await?;
+        self.writer.write_varint(len)?;
+        self.writer.write_all(&self.cid_buffer)?;
+        self.writer.write_all(data)?;
 
         Ok(())
     }
 
     /// Finishes writing, including flushing and returns the writer.
-    pub async fn finish(mut self) -> Result<W, Error> {
-        self.flush().await?;
+    pub fn finish(mut self) -> Result<W, Error> {
+        self.flush()?;
         Ok(self.writer)
     }
 
     /// Flushes the underlying writer.
-    pub async fn flush(&mut self) -> Result<(), Error> {
-        self.writer.flush().await?;
+    pub fn flush(&mut self) -> Result<(), Error> {
+        self.writer.flush()?;
         Ok(())
     }
 
