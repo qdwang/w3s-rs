@@ -5,6 +5,13 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use w3s::writer::{splitter, uploader, crypto::Cipher};
 
+fn get_file_name(path: &String) -> Option<String> {
+    let path = std::path::Path::new(path);
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|x| Some(x.to_owned()))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = env::args().collect::<Vec<_>>();
@@ -15,7 +22,7 @@ async fn main() -> Result<()> {
             "
         Please input file path and web3.storage auth token
         Example:
-            cargo run --all-features --example simple-encrypt-upload the/path/to/my_file eyJhbG......MHlq0
+            cargo run --all-features --example file-encrypt-upload the/path/to/my_file eyJhbG......MHlq0
         "
         ),
     }
@@ -23,10 +30,11 @@ async fn main() -> Result<()> {
 
 async fn upload(path: &String, auth_token: &String) -> Result<()> {
     let mut file = File::open(path)?;
+    let filename = get_file_name(path).unwrap();
 
     let uploader = uploader::Uploader::new(
         auth_token.clone(),
-        "encrypted_filename".to_owned(),
+        filename,
         uploader::UploadType::Upload,
         2,
         Some(Arc::new(Mutex::new(|name, part, pos, total| {
