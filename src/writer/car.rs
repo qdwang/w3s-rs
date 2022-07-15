@@ -18,7 +18,11 @@ enum Error {
     #[error("Car file writing error: {0:?}")]
     CarWriteError(#[from] iroh_car::error::Error),
 }
-
+impl From<Error> for io::Error {
+    fn from(e: Error) -> Self {
+        io::Error::new(io::ErrorKind::Interrupted, e)
+    }
+}
 trait ToVec {
     fn to_vec(&self) -> Vec<u8>;
 }
@@ -80,7 +84,7 @@ pub struct Car<'a, W: io::Write> {
 }
 
 impl<'a, W: io::Write> Car<'a, W> {
-    fn new(name: String, next_writer: W) -> Car<'a, W> {
+    pub fn new(name: String, next_writer: W) -> Car<'a, W> {
         Car {
             buf: Vec::with_capacity(BLOCK_SIZE * 2),
             chunks: Vec::with_capacity(MAX_CAR_SIZE / BLOCK_SIZE),
@@ -118,24 +122,30 @@ impl<'a, W: io::Write> Car<'a, W> {
         }
     }
 
+    fn buf_to_chunk(&mut self) -> Result<Option<Vec<u8>>, Error> {
+        let mut buf = mem::replace(&mut self.buf, vec![]);
+        if buf.len() > BLOCK_SIZE {
+            self.buf = buf.split_off(BLOCK_SIZE);
+        }
+
+        let digest = Blake2b256.digest(&buf);
+        let cid = Cid::new_v1(0x55, digest);
+        let size = buf.len() as u64;
+        let link = PBLink {
+            Name: None,
+            Hash: Some(cid.to_bytes().into()),
+            Tsize: Some(size),
+        };
+        self.blocksizes.push(size);
+        self.links.push(link);
+        self.chunks_extend((cid, buf), None)
+    }
+
     fn buf_extend(&mut self, buf: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         self.buf.extend(buf);
 
         if self.buf.len() >= BLOCK_SIZE {
-            let mut buf = mem::replace(&mut self.buf, vec![]);
-            self.buf = buf.split_off(BLOCK_SIZE);
-
-            let digest = Blake2b256.digest(&buf);
-            let cid = Cid::new_v1(0x55, digest);
-            let size = buf.len() as u64;
-            let link = PBLink {
-                Name: None,
-                Hash: Some(cid.to_bytes().into()),
-                Tsize: Some(size),
-            };
-            self.blocksizes.push(size);
-            self.links.push(link);
-            self.chunks_extend((cid, buf), None)
+            self.buf_to_chunk()
         } else {
             Ok(None)
         }
@@ -203,14 +213,12 @@ impl<'a, W: io::Write> Car<'a, W> {
 
         (cid, node_bytes)
     }
+
 }
 
 impl<'a, W: io::Write> io::Write for Car<'a, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let result = self.buf_extend(buf).map_err(|e| {
-            eprintln!("{e:?}");
-            io::ErrorKind::Interrupted
-        })?;
+        let result = self.buf_extend(buf)?;
 
         // this scope is for memory release for car(Vec<u8>)
         let need_flush = if let Some(car) = result {
@@ -226,16 +234,23 @@ impl<'a, W: io::Write> io::Write for Car<'a, W> {
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
-        let (file_cid, file_pb_bytes, total_size) = self.links_to_file();
-        let root = self.gen_root(vec![(file_cid, total_size)]);
-        let result = self.chunks_extend((file_cid, file_pb_bytes), Some(root)).map_err(|e| {
-            eprintln!("{e:?}");
-            io::ErrorKind::Interrupted
-        })?;
-
+        // flush the remaining buf
+        let result = self.buf_to_chunk()?;
         if let Some(car) = result {
             self.next_writer().write(&car)?;
         }
+
+        // combine raw chunks to a file PBNode
+        let (file_cid, file_pb_bytes, total_size) = self.links_to_file();
+        // generate root PBNode
+        let root = self.gen_root(vec![(file_cid, total_size)]);
+
+        // flush the remaining chunks
+        let result = self.chunks_extend((file_cid, file_pb_bytes), Some(root))?;
+        if let Some(car) = result {
+            self.next_writer().write(&car)?;
+        }
+
         self.next_writer().flush()?;
         Ok(())
     }
