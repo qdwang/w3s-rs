@@ -15,8 +15,9 @@ const MAX_CAR_SIZE: usize = 104752742; // 99.9mb
 #[derive(Error, Debug)]
 enum Error {
     #[error("Car file writing error: {0:?}")]
-    CarWriteError(#[from] iroh_car::error::Error),
+    CarWriteError(#[from] iroh_car::Error),
 }
+
 impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         io::Error::new(io::ErrorKind::Interrupted, e)
