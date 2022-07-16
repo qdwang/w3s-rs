@@ -41,7 +41,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
     );
-    let mut car = car::Car::new(filename, uploader);
+    let mut car = car::Car::new(filename, 256 * 1024, uploader);
 
     io::copy(&mut file, &mut car)?;
     car.flush()?;

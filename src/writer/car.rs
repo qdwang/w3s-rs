@@ -11,7 +11,6 @@ use thiserror::Error;
 use unixfs_v1::{PBLink, PBNode, UnixFs, UnixFsType};
 
 const MAX_CAR_SIZE: usize = 104752742; // 99.9mb
-const BLOCK_SIZE: usize = 2 * 1024 * 1024;
 
 #[derive(Error, Debug)]
 enum Error {
@@ -75,6 +74,7 @@ fn fake_root() -> (Cid, Vec<u8>) {
 
 pub struct Car<'a, W: io::Write> {
     buf: Vec<u8>,
+    block_size: usize,
     chunks: Vec<(Cid, Vec<u8>)>,
     links: Vec<PBLink<'a>>,
     blocksizes: Vec<u64>,
@@ -84,10 +84,11 @@ pub struct Car<'a, W: io::Write> {
 }
 
 impl<'a, W: io::Write> Car<'a, W> {
-    pub fn new(name: String, next_writer: W) -> Car<'a, W> {
+    pub fn new(name: String, block_size: usize, next_writer: W) -> Car<'a, W> {
         Car {
-            buf: Vec::with_capacity(BLOCK_SIZE * 2),
-            chunks: Vec::with_capacity(MAX_CAR_SIZE / BLOCK_SIZE),
+            buf: Vec::with_capacity(block_size * 2),
+            block_size,
+            chunks: Vec::with_capacity(MAX_CAR_SIZE / block_size),
             links: vec![],
             blocksizes: vec![],
             fake_root: fake_root(),
@@ -98,11 +99,12 @@ impl<'a, W: io::Write> Car<'a, W> {
 
     fn chunks_extend(&mut self, chunk: (Cid, Vec<u8>), root: Option<(Cid, Vec<u8>)>) -> Result<Option<Vec<u8>>, Error> {
         self.chunks.push(chunk);
+        let max_chunk_size = MAX_CAR_SIZE / self.block_size;
 
-        if root.is_some() || self.chunks.len() == MAX_CAR_SIZE / BLOCK_SIZE {
+        if root.is_some() || self.chunks.len() == max_chunk_size {
             let chunks = mem::replace(
                 &mut self.chunks,
-                Vec::with_capacity(MAX_CAR_SIZE / BLOCK_SIZE),
+                Vec::with_capacity(max_chunk_size),
             );
 
             let (root_cid, root_bytes) = match root { Some(x) => x, None => self.fake_root.clone()};
@@ -124,8 +126,8 @@ impl<'a, W: io::Write> Car<'a, W> {
 
     fn buf_to_chunk(&mut self) -> Result<Option<Vec<u8>>, Error> {
         let mut buf = mem::replace(&mut self.buf, vec![]);
-        if buf.len() > BLOCK_SIZE {
-            self.buf = buf.split_off(BLOCK_SIZE);
+        if buf.len() > self.block_size {
+            self.buf = buf.split_off(self.block_size);
         }
 
         let digest = Blake2b256.digest(&buf);
@@ -144,7 +146,7 @@ impl<'a, W: io::Write> Car<'a, W> {
     fn buf_extend(&mut self, buf: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         self.buf.extend(buf);
 
-        if self.buf.len() >= BLOCK_SIZE {
+        if self.buf.len() >= self.block_size {
             self.buf_to_chunk()
         } else {
             Ok(None)
