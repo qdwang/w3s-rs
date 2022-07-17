@@ -1,3 +1,5 @@
+![Crates.io](https://img.shields.io/crates/v/w3s?style=flat-square)
+
 # w3s
 A Rust crate to the Web3.Storage API.
 
