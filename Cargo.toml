@@ -2,7 +2,7 @@
 edition = "2021"
 name = "w3s"
 version = "0.1.0"
-license = "MIT AND Apache-2.0"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/qdwang/w3s-rs"
 description = "A Rust crate to the Web3.Storage API"
 
