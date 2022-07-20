@@ -159,7 +159,7 @@ impl io::Write for Uploader {
 
         if self.tasks.len() == self.max_concurrent {
             // abnormal written len can tell the parent Writer to call `flush` after this `write` function.
-            // you shouldn't call `self.flush()` directly because it can't drop the outside Vec to release memory
+            // you shouldn't call `self.flush()` directly here because it can't drop the outside Vec to release memory
             // when pause the thread to await async uploading jobs.
             Ok(0)
         } else {
