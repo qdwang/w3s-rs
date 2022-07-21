@@ -39,7 +39,7 @@ impl fmt::Display for UploadType {
     }
 }
 
-type ProgressListener =
+pub type ProgressListener =
     Arc<Mutex<dyn FnMut(Arc<String>, usize, usize, usize) + Send + Sync + 'static>>;
 pub struct Uploader {
     upload_type: UploadType,

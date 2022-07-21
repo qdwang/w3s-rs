@@ -4,6 +4,7 @@ pub mod car;
 
 pub mod splitter;
 pub mod uploader;
+pub mod downloader;
 
 #[cfg(feature = "encryption")]
 pub mod crypto;
