@@ -1,4 +1,17 @@
+use std::fmt::Display;
+
+use reqwest::Client;
 use serde::Deserialize;
+use thiserror::Error;
+
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Reqwest error: {0:?}")]
+    ReqwestError(#[from] reqwest::Error),
+    #[error("Serde JSON parsing error: {0:?}")]
+    SerdeJSONError(#[from] serde_json::Error)
+}
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
@@ -49,6 +62,19 @@ pub struct Deal {
 }
 
 impl StorageItem {
+    pub async fn fetch_uploads(auth_token: impl Display) -> Result<Vec<StorageItem>, Error> {
+        let result = Client::new()
+            .get("https://api.web3.storage/user/uploads")
+            .header("accept", "application/json")
+            .bearer_auth(auth_token)
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        let items : Vec<StorageItem> = serde_json::from_str(&result)?;
+        Ok(items)
+    }
     pub fn contains_name(&self, name: &str) -> bool {
         self.name.contains(name)
     }
