@@ -18,7 +18,7 @@ use tokio::{
 pub enum Error {
     #[error("Tokio task join error")]
     JoinError(#[from] JoinError),
-    #[error("Serde JSON error: {1}")]
+    #[error("Serde JSON error. Response: {1}")]
     SerdeJSONError(#[source] serde_json::Error, String),
     #[error("Cid parsing error")]
     CidError(#[from] cid::Error),
