@@ -31,6 +31,18 @@ pub struct StorageItem {
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
+pub struct Status {
+    created: String,
+    pub cid: String,
+    #[serde(rename = "dagSize")]
+    dag_size: u32,
+    pins: Vec<Pin>,
+    deals: Vec<Deal>,
+}
+
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
 pub struct Pin {
     status: String,
     updated: String,
@@ -142,6 +154,45 @@ impl StorageItem {
             serde_json::from_str(&result).map_err(|e| Error::SerdeJSONError(e, result))?;
 
         Ok(items)
+    }
+
+    pub async fn retrieve_car(cid: &str) -> Result<Vec<u8>, Error> {
+        let result = Client::new()
+            .get(format!("https://api.web3.storage/car/{}", cid))
+            .header("accept", "application/vnd.ipld.car")
+            .send()
+            .await?
+            .bytes()
+            .await?;
+
+        Ok(result.to_vec())
+    }
+
+    pub async fn check_car_head(cid: &str) -> Result<String, Error> {
+        let result = Client::new()
+            .head(format!("https://api.web3.storage/car/{}", cid))
+            .header("accept", "*/*")
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        Ok(result)
+    }
+
+    pub async fn status_of_cid(cid: &str) -> Result<Status, Error> {
+        let result = Client::new()
+            .get(format!("https://api.web3.storage/status/{}", cid))
+            .header("accept", "application/json")
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        let status: Status =
+            serde_json::from_str(&result).map_err(|e| Error::SerdeJSONError(e, result))?;
+
+        Ok(status)
     }
 
     pub fn contains_name(&self, name: &str) -> bool {
