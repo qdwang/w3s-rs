@@ -1,4 +1,7 @@
-use std::fmt::Display;
+use std::{
+    collections::HashMap,
+    fmt::Display,
+};
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -13,7 +16,7 @@ pub enum Error {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct StorageItem {
     #[serde(rename = "_id")]
     id: String,
@@ -30,7 +33,7 @@ pub struct StorageItem {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Status {
     created: String,
     pub cid: String,
@@ -40,9 +43,8 @@ pub struct Status {
     deals: Vec<Deal>,
 }
 
-
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Pin {
     status: String,
     updated: String,
@@ -54,7 +56,7 @@ pub struct Pin {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Deal {
     #[serde(rename = "dealId")]
     deal_id: u32,
@@ -136,66 +138,73 @@ impl UserUploadsQuery {
 }
 
 impl StorageItem {
-    pub async fn fetch_uploads(
-        auth_token: impl Display,
-        query: impl AsRef<UserUploadsQuery>,
-    ) -> Result<Vec<StorageItem>, Error> {
-        let result = Client::new()
-            .get("https://api.web3.storage/user/uploads")
-            .header("accept", "application/json")
-            .query(&query.as_ref().gen_query())
-            .bearer_auth(auth_token)
-            .send()
-            .await?
-            .text()
-            .await?;
-
-        let items: Vec<StorageItem> =
-            serde_json::from_str(&result).map_err(|e| Error::SerdeJSONError(e, result))?;
-
-        Ok(items)
-    }
-
-    pub async fn retrieve_car(cid: &str) -> Result<Vec<u8>, Error> {
-        let result = Client::new()
-            .get(format!("https://api.web3.storage/car/{}", cid))
-            .header("accept", "application/vnd.ipld.car")
-            .send()
-            .await?
-            .bytes()
-            .await?;
-
-        Ok(result.to_vec())
-    }
-
-    pub async fn check_car_head(cid: &str) -> Result<String, Error> {
-        let result = Client::new()
-            .head(format!("https://api.web3.storage/car/{}", cid))
-            .header("accept", "*/*")
-            .send()
-            .await?
-            .text()
-            .await?;
-
-        Ok(result)
-    }
-
-    pub async fn status_of_cid(cid: &str) -> Result<Status, Error> {
-        let result = Client::new()
-            .get(format!("https://api.web3.storage/status/{}", cid))
-            .header("accept", "application/json")
-            .send()
-            .await?
-            .text()
-            .await?;
-
-        let status: Status =
-            serde_json::from_str(&result).map_err(|e| Error::SerdeJSONError(e, result))?;
-
-        Ok(status)
-    }
-
     pub fn contains_name(&self, name: &str) -> bool {
         self.name.contains(name)
     }
+}
+
+pub async fn check_car_head(cid: &str) -> Result<HashMap<String, String>, Error> {
+    let header = Client::new()
+        .head(format!("https://api.web3.storage/car/{}", cid))
+        .header("accept", "*/*")
+        .send()
+        .await?
+        .headers()
+        .to_owned();
+
+    let mut result = HashMap::new();
+    for (name, value) in header.iter() {
+        if let Ok(s) = value.to_str() {
+            result.insert(name.to_string(), s.to_owned());
+        }
+    }
+
+    Ok(result)
+}
+
+pub async fn status_of_cid(cid: &str) -> Result<Status, Error> {
+    let result = Client::new()
+        .get(format!("https://api.web3.storage/status/{}", cid))
+        .header("accept", "application/json")
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let status: Status =
+        serde_json::from_str(&result).map_err(|e| Error::SerdeJSONError(e, result))?;
+
+    Ok(status)
+}
+
+pub async fn fetch_uploads(
+    auth_token: impl Display,
+    query: impl AsRef<UserUploadsQuery>,
+) -> Result<Vec<StorageItem>, Error> {
+    let result = Client::new()
+        .get("https://api.web3.storage/user/uploads")
+        .header("accept", "application/json")
+        .query(&query.as_ref().gen_query())
+        .bearer_auth(auth_token)
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let items: Vec<StorageItem> =
+        serde_json::from_str(&result).map_err(|e| Error::SerdeJSONError(e, result))?;
+
+    Ok(items)
+}
+
+pub async fn retrieve_car(cid: &str) -> Result<Vec<u8>, Error> {
+    let result = Client::new()
+        .get(format!("https://api.web3.storage/car/{}", cid))
+        .header("accept", "application/vnd.ipld.car")
+        .send()
+        .await?
+        .bytes()
+        .await?;
+
+    Ok(result.to_vec())
 }

@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
 
 async fn get_uploads(auth_token: &String) -> Result<()> {
     let query = w3s::api::UserUploadsQuery::new(None, None, None, None, None);
-    let results = w3s::api::StorageItem::fetch_uploads(auth_token, query).await?;
+    let results = w3s::api::fetch_uploads(auth_token, query).await?;
     println!("cid list: {:?}", results.into_iter().map(|x| x.cid).collect::<Vec<_>>());
 
     Ok(())
