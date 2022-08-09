@@ -28,6 +28,27 @@ impl<W: io::Write> Downloader<W> {
     }
 }
 
+pub async fn fetch_mac(url: &str) -> Result<Vec<u8>, Error> {
+    let size = Client::new()
+        .head(url)
+        .send()
+        .await?
+        .headers()
+        .get("content-length")
+        .map(|x| x.to_str().unwrap_or("").parse::<u64>().unwrap_or(0))
+        .ok_or_else(|| Error::NoContentLength(url.to_owned()))?;
+
+    let resp = Client::new()
+        .get(url)
+        .header("Range", format!("bytes={}-{}", size - 16, size))
+        .send()
+        .await?
+        .bytes()
+        .await?;
+
+    Ok(resp.to_vec())
+}
+
 impl<W: io::Write> Downloader<W> {
     pub async fn download(
         &mut self,
