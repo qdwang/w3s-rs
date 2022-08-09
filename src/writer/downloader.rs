@@ -1,4 +1,4 @@
-use super::{uploader::ProgressListener, *};
+use super::uploader::ProgressListener;
 use reqwest::Client;
 use thiserror::Error;
 
@@ -20,13 +20,22 @@ pub struct Downloader<W: io::Write> {
 }
 
 impl<W: io::Write> Downloader<W> {
-    async fn download(
+    pub fn new(progress_listener: Option<ProgressListener>, next_writer: W) -> Self {
+        Downloader {
+            progress_listener,
+            next_writer,
+        }
+    }
+}
+
+impl<W: io::Write> Downloader<W> {
+    pub async fn download(
         &mut self,
         name: Arc<String>,
-        url: String,
+        url: &str,
         start_offset: Option<u64>,
     ) -> Result<(), Error> {
-        let mut req_builder = Client::new().get(&url);
+        let mut req_builder = Client::new().get(url);
         let begin_offset = if let Some(offset) = start_offset {
             req_builder = req_builder.header("Range", format!("bytes={}-", offset));
             offset as usize
@@ -50,7 +59,7 @@ impl<W: io::Write> Downloader<W> {
             resp.content_length()
         }
         .map(|v| v as usize)
-        .ok_or(Error::NoContentLength(url))?;
+        .ok_or_else(|| Error::NoContentLength(url.to_owned()))?;
 
         if begin_offset != total_len {
             let mut written_len = begin_offset;
