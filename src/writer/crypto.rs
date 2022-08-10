@@ -165,6 +165,8 @@ impl<W: io::Write> Cipher<W> {
 
 impl<W: io::Write> io::Write for Cipher<W> {
     fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
+        let buf_size = buf.len();
+
         if !self.is_prefix_written {
             // add salt and nonce to the start to enable streaming decryption when downloading the file
             let mut prefix = Vec::with_capacity(SALT_SIZE + NONCE_SIZE);
@@ -182,7 +184,9 @@ impl<W: io::Write> io::Write for Cipher<W> {
                 prefix.extend(salt);
                 prefix.extend(nonce);
 
-                buf = &buf.get(NONCE_SIZE..).ok_or(Error::TooShortForNonce)?;
+                buf = &buf
+                    .get(SALT_SIZE + NONCE_SIZE..)
+                    .ok_or(Error::TooShortForNonce)?;
             } else {
                 prefix.extend(self.salt);
                 prefix.extend(self.nonce);
@@ -199,7 +203,7 @@ impl<W: io::Write> io::Write for Cipher<W> {
         let encrypted = self.encrypt(&buf);
         // since the Upload writer shouldn't be the next one, there is no needs to handle the 0 written length condition.
         self.next_writer().write(&encrypted)?;
-        Ok(buf.len())
+        Ok(buf_size)
     }
 
     fn flush(&mut self) -> io::Result<()> {
