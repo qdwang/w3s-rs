@@ -25,6 +25,8 @@ pub enum Error {
     TooShortForSalt,
     #[error("No enough bytes for nonce.")]
     TooShortForNonce,
+    #[error("MAC tag error. The encrypted content may has been modified and is not valid.\n{0}")]
+    MacTagInvalid(String),
 }
 
 impl From<Error> for io::Error {
@@ -142,11 +144,19 @@ impl<W: io::Write> Cipher<W> {
         }
     }
 
-    pub fn encrypt(&mut self, bytes: &[u8]) -> Vec<u8> {
+    fn encrypt(&mut self, bytes: &[u8]) -> Vec<u8> {
         let mut buffer = bytes.to_vec();
 
         self.cipher.apply_keystream(&mut buffer);
         self.update_mac(&buffer, true);
+
+        buffer
+    }
+    fn decrypt(&mut self, bytes: &[u8]) -> Vec<u8> {
+        let mut buffer = bytes.to_vec();
+
+        self.update_mac(&buffer, true);
+        self.cipher.apply_keystream(&mut buffer);
 
         buffer
     }
@@ -178,6 +188,8 @@ impl<W: io::Write> io::Write for Cipher<W> {
                     .get(SALT_SIZE..SALT_SIZE + NONCE_SIZE)
                     .ok_or(Error::TooShortForNonce)?;
                 let (cipher, mac) = Self::gen_cipher_and_mac(pwd, salt, nonce)?;
+                pwd.clear();
+
                 self.cipher = cipher;
                 self.mac = mac;
 
@@ -200,18 +212,41 @@ impl<W: io::Write> io::Write for Cipher<W> {
             self.is_prefix_written = true;
         }
 
-        let encrypted = self.encrypt(&buf);
-        // since the Upload writer shouldn't be the next one, there is no needs to handle the 0 written length condition.
-        self.next_writer().write(&encrypted)?;
+        if let Some(raw) = self.decryption.take() {
+            if raw.len() > 0 {
+                let decrypted = self.decrypt(&raw);
+                self.next_writer().write(&decrypted)?;
+            }
+            self.decryption = Some(buf.to_vec())
+        } else {
+            let encrypted = self.encrypt(&buf);
+            // since the Upload writer shouldn't be the next one, there is no needs to handle the 0 written length condition.
+            self.next_writer().write(&encrypted)?;
+        }
+
         Ok(buf_size)
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        if let Some(raw) = self.decryption.take() {
+            let (buf, tag) = raw.split_at(raw.len() - 16);
+            let decrypted = self.decrypt(&buf);
+            self.next_writer().write(&decrypted)?;
+            self.decryption = Some(tag.to_vec());
+        }
+
         self.update_mac(&[], false);
 
         let mac = self.finalize_mac();
 
-        if self.decryption.is_none() {
+        if let Some(tag) = self.decryption.as_ref() {
+            if &mac != tag {
+                Err(Error::MacTagInvalid(format!(
+                    "calculated: {:02x?}\n from file: {:02x?}",
+                    mac, tag
+                )))?;
+            }
+        } else {
             self.next_writer().write(&mac)?;
         }
 
