@@ -9,6 +9,9 @@ pub mod downloader;
 #[cfg(feature = "encryption")]
 pub mod crypto;
 
+#[cfg(feature = "zstd")]
+pub mod decompressor;
+
 pub trait ChainWrite<W: io::Write>: io::Write {
     fn next_writer(&mut self) -> &mut W;
     fn next(self) -> W;
