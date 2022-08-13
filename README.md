@@ -16,7 +16,7 @@ Please check the [examples/](examples/) folder for different usage examples.
 - [x] Single file/CAR upload with encryption
 - [x] Auto split for >100MB single file upload
 - [x] CAR generation from single file
-- [ ] Single file/car download
+- [x] Single file/car download
 - [ ] Single file/car download with decompression and decryption
 - [ ] Directory upload by CAR writer
 - [ ] Directory upload with compression and encryption
