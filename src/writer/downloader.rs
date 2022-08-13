@@ -80,9 +80,10 @@ impl<W: io::Write> Downloader<W> {
             resp.content_length()
         }
         .map(|v| v as usize)
-        .ok_or_else(|| Error::NoContentLength(url.to_owned()))?;
+        .unwrap_or(0);
+        // .ok_or_else(|| Error::NoContentLength(url.to_owned()))?;
 
-        if begin_offset != total_len {
+        if total_len == 0 || begin_offset != total_len {
             let mut written_len = begin_offset;
             while let Ok(Some(chunk)) = resp.chunk().await {
                 self.next_writer.write(chunk.as_ref())?;
