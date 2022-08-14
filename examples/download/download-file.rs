@@ -11,11 +11,7 @@ async fn main() -> Result<()> {
     match args.as_slice() {
         [_, url, path] => download(url, path).await,
         _ => panic!(
-            "
-        Please input ipfs file url and the path to save the file
-        Example:
-            cargo run --example download-file url_to_the_ipfs_file path_to_save_file
-        "
+            "\n\nPlease input [ipfs_file_url] and the [path_to_save_the_file]\n\n"
         ),
     }
 }
@@ -40,9 +36,9 @@ async fn download(url: &String, path: &String) -> Result<()> {
         file,
     );
     downloader
-        .download(Arc::new("file1".to_owned()), url.as_str(), start_offset)
+        .download(Arc::new(path.clone()), url.as_str(), start_offset)
         .await?;
 
-    println!("file1 downloaded to path:{path}");
+    println!("file downloaded to path:{path}");
     Ok(())
 }

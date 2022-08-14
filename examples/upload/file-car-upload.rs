@@ -19,11 +19,7 @@ async fn main() -> Result<()> {
     match args.as_slice() {
         [_, path, auth_token] => upload(path, auth_token).await,
         _ => panic!(
-            "
-        Please input file path and web3.storage auth token
-        Example:
-            cargo run --example file-car-upload the/path/to/my_file eyJhbG......MHlq0
-        "
+            "\n\nPlease input [the_path_to_the_file] and [web3.storage_auth_token(eyJhbG......MHlq0)]\n\n"
         ),
     }
 }

@@ -8,11 +8,7 @@ async fn main() -> Result<()> {
     match args.as_slice() {
         [_, auth_token] => get_uploads(auth_token).await,
         _ => panic!(
-            "
-        Please input the web3.storage auth token
-        Example:
-            cargo run --example get-uploads eyJhbG......MHlq0
-        "
+            "\n\nPlease input the [web3.storage_auth_token(eyJhbG......MHlq0)]\n\n"
         ),
     }
 }

@@ -43,3 +43,43 @@ zstd = { version = "0.11", optional = true }
 
 [features]
 encryption = ["rand", "argon2", "chacha20", "poly1305", "aead", "zeroize"]
+
+
+# examples
+[[example]]
+name = "download-decrypt-decompress-file"
+path = "examples/download/download-decrypt-decompress-file.rs"
+required-features = ["encryption", "zstd"]
+
+[[example]]
+name = "download-decrypt-file"
+path = "examples/download/download-decrypt-file.rs"
+required-features = ["encryption"]
+
+[[example]]
+name = "download-file"
+path = "examples/download/download-file.rs"
+
+[[example]]
+name = "file-upload"
+path = "examples/upload/file-upload.rs"
+
+[[example]]
+name = "file-encrypt-upload"
+path = "examples/upload/file-encrypt-upload.rs"
+required-features = ["encryption"]
+
+[[example]]
+name = "file-compress-upload"
+path = "examples/upload/file-compress-upload.rs"
+required-features = ["zstd"]
+
+[[example]]
+name = "file-car-upload"
+path = "examples/upload/file-car-upload.rs"
+
+[[example]]
+name = "file-compress-encrypt-car-upload"
+path = "examples/upload/file-compress-encrypt-car-upload.rs"
+required-features = ["encryption", "zstd"]
+

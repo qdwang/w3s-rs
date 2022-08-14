@@ -1,8 +1,9 @@
 use anyhow::Result;
-use std::env;
-use std::fs::OpenOptions;
+use std::fs::{OpenOptions};
 use std::sync::{Arc, Mutex};
+use std::{env};
 use w3s::writer::crypto::Cipher;
+use w3s::writer::decompressor;
 use w3s::writer::downloader;
 
 #[tokio::main]
@@ -12,11 +13,7 @@ async fn main() -> Result<()> {
     match args.as_slice() {
         [_, url, path] => download(url, path).await,
         _ => panic!(
-            "
-        Please input encrypted ipfs file url and the path to save the file
-        Example:
-            cargo run --all-features --example download-decrypt-file url_to_the_encrypted_ipfs_file path_to_save_file
-        "
+            "\n\nPlease input [url_to_the_encrypted_ipfs_file] and the [path_to_save_file]\n\n"
         ),
     }
 }
@@ -28,7 +25,8 @@ async fn download(url: &String, path: &String) -> Result<()> {
         .create(true)
         .open(path)?;
 
-    let cipher = Cipher::new_decryption(b"abcd1234".to_vec(), file)?;
+    let decompressor = decompressor::Decompressor::new(file)?;
+    let cipher = Cipher::new_decryption(b"abcd1234".to_vec(), decompressor)?;
 
     let mut downloader = downloader::Downloader::new(
         Some(Arc::new(Mutex::new(|name, _, pos, total| {
@@ -37,9 +35,9 @@ async fn download(url: &String, path: &String) -> Result<()> {
         cipher,
     );
     downloader
-        .download(Arc::new("file1".to_owned()), url.as_str(), None)
+        .download(Arc::new(path.clone()), url.as_str(), None)
         .await?;
 
-    println!("file1 downloaded to path:{path}");
+    println!("file downloaded to path:{path}");
     Ok(())
 }

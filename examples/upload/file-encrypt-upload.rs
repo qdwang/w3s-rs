@@ -3,7 +3,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
-use w3s::writer::{splitter, uploader};
+use w3s::writer::{splitter, uploader, crypto::Cipher};
 
 fn get_file_name(path: &String) -> Option<String> {
     let path = std::path::Path::new(path);
@@ -19,11 +19,7 @@ async fn main() -> Result<()> {
     match args.as_slice() {
         [_, path, auth_token] => upload(path, auth_token).await,
         _ => panic!(
-            "
-        Please input file path and web3.storage auth token
-        Example:
-            cargo run --all-features --example file-compress-upload the/path/to/my_file eyJhbG......MHlq0
-        "
+            "\n\nPlease input [the_path_to_the_file] and [web3.storage_auth_token(eyJhbG......MHlq0)]\n\n"
         ),
     }
 }
@@ -42,15 +38,15 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
         }))),
     );
     let splitter = splitter::PlainSplitter::new(uploader);
+    
+    let mut pwd = b"abcd1234".to_owned();
+    // need feature `encryption`
+    let mut cipher = Cipher::new(&mut pwd, splitter)?;
 
-    // need feature `zstd`
-    let mut compressor = zstd::stream::Encoder::new(splitter, 10)?;
-    io::copy(&mut file, &mut compressor)?;
+    io::copy(&mut file, &mut cipher)?;
+    cipher.flush()?;
 
-    let mut splitter = compressor.finish()?;
-    splitter.flush()?; // this line is needed to upload the final part of the file
-
-    let mut uploader = w3s::take_nth_writer!(splitter);
+    let mut uploader = w3s::take_nth_writer!(cipher>);
     let results = uploader.finish_results().await?;
     println!("results: {:?}", results);
 
