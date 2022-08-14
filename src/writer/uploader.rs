@@ -22,6 +22,8 @@ pub enum Error {
     SerdeJSONError(#[source] serde_json::Error, String),
     #[error("Cid parsing error")]
     CidError(#[from] cid::Error),
+    #[error("IO error")]
+    IoError(#[from] io::Error)
 }
 
 #[derive(Copy, Clone)]

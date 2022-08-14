@@ -16,6 +16,7 @@
 pub mod api;
 pub mod gateway;
 pub mod writer;
+pub mod helper;
 
 /// This module is from [https://github.com/n0-computer/iroh](https://github.com/n0-computer/iroh).
 pub mod iroh_car;
