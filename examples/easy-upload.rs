@@ -27,7 +27,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
     let mut file = File::open(path)?;
     let filename = get_file_name(path).unwrap();
 
-    let pwd = b"abcd1234".to_owned();
+    let mut pwd = b"abcd1234".to_owned();
     let results = helper::upload(
         &mut file,
         auth_token,
@@ -37,7 +37,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
         Some(None),
-        Some(pwd),
+        Some(&mut pwd),
         Some(None),
     ).await?;
     
