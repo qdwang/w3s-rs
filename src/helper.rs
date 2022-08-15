@@ -4,6 +4,8 @@ use thiserror::Error;
 use super::writer::*;
 use std::io::{self, Write};
 
+use std::sync::Arc;
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("IO error")]
@@ -12,6 +14,8 @@ pub enum Error {
     UploadError(#[from] uploader::Error),
     #[error("Cipher error")]
     CipherError(#[from] crypto::Error),
+    #[error("Download error")]
+    DownloadError(#[from] downloader::Error),
 }
 
 fn gen_uploader(
@@ -92,4 +96,53 @@ pub async fn upload(
     };
 
     Ok(results)
+}
+
+pub async fn download(
+    url: impl AsRef<str>,
+    name: impl AsRef<str>,
+    writer: impl io::Write,
+    progress_listener: Option<uploader::ProgressListener>,
+    start_offset: Option<u64>,
+    with_decryption: Option<Vec<u8>>,
+    with_decompression: bool,
+) -> Result<impl io::Write, Error> {
+    macro_rules! gen_downloader {
+        ($writer:expr) => {{
+            let mut downloader = downloader::Downloader::new(progress_listener, $writer);
+            downloader
+                .download(
+                    Arc::new(name.as_ref().to_owned()),
+                    url.as_ref(),
+                    start_offset,
+                )
+                .await?;
+            downloader
+        }};
+    }
+
+    let ret = match (with_decompression, with_decryption) {
+        (true, Some(password)) => {
+            let decompressor = decompressor::Decompressor::new(writer)?;
+            let cipher = crypto::Cipher::new_decryption(password, decompressor)?;
+            let downloader = gen_downloader!(cipher);
+            downloader.next().next().next()
+        }
+        (false, Some(password)) => {
+            let cipher = crypto::Cipher::new_decryption(password, writer)?;
+            let downloader = gen_downloader!(cipher);
+            downloader.next().next()
+        }
+        (true, None) => {
+            let decompressor = decompressor::Decompressor::new(writer)?;
+            let downloader = gen_downloader!(decompressor);
+            downloader.next().next()
+        }
+        _ => {
+            let downloader = gen_downloader!(writer);
+            downloader.next()
+        }
+    };
+
+    Ok(ret)
 }
