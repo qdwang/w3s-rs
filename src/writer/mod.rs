@@ -7,7 +7,7 @@ pub mod uploader;
 pub mod downloader;
 
 #[cfg(feature = "encryption")]
-pub mod crypto;
+pub mod cipher;
 
 #[cfg(feature = "zstd")]
 pub mod decompressor;

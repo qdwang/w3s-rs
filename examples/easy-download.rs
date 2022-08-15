@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 }
 
 async fn download(url: &String, path: &String) -> Result<()> {
-    let file = OpenOptions::new()
+    let mut file = OpenOptions::new()
         .write(true)
         .append(false)
         .create(true)
@@ -28,7 +28,7 @@ async fn download(url: &String, path: &String) -> Result<()> {
     let _ = helper::download(
         url,
         name,
-        file,
+        &mut file,
         Some(Arc::new(Mutex::new(|name, _, pos, total| {
             println!("name: {name} {pos}/{total}");
         }))),

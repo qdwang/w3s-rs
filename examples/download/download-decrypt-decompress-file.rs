@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fs::{OpenOptions};
 use std::sync::{Arc, Mutex};
 use std::{env};
-use w3s::writer::crypto::Cipher;
+use w3s::writer::cipher::Cipher;
 use w3s::writer::decompressor;
 use w3s::writer::downloader;
 

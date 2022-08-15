@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::env;
 use std::fs::OpenOptions;
 use std::sync::{Arc, Mutex};
-use w3s::writer::crypto::Cipher;
+use w3s::writer::cipher::Cipher;
 use w3s::writer::downloader;
 
 #[tokio::main]

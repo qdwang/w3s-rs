@@ -12,10 +12,19 @@ pub enum Error {
     IoError(#[from] io::Error),
     #[error("Upload error")]
     UploadError(#[from] uploader::Error),
+
+    #[cfg(feature = "encryption")]
     #[error("Cipher error")]
-    CipherError(#[from] crypto::Error),
+    CipherError(#[from] cipher::Error),
+
     #[error("Download error")]
     DownloadError(#[from] downloader::Error),
+    #[error("The feature:\"encryption\" is required.")]
+    FeatureNoCipher,
+    #[error("The feature:\"zstd\" is required.")]
+    FeatureNoZstd,
+    #[error("The features:\"encryption zstd\" are required.")]
+    FeatureNoCipherAndZstd,
 }
 
 fn gen_uploader(
@@ -48,6 +57,74 @@ fn gen_uploader(
     }
 }
 
+#[cfg(all(feature = "zstd", feature = "encryption"))]
+async fn compress_then_encrypt<'a>(
+    reader: &'a mut impl io::Read,
+    writer: Box<dyn ChainWrite<uploader::Uploader>>,
+    level: Option<i32>,
+    password: &'a mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    let cipher = cipher::Cipher::new(password, writer)?;
+    let mut compressor = zstd::stream::Encoder::new(cipher, level.unwrap_or(10))?;
+    io::copy(reader, &mut compressor)?;
+    let mut cipher = compressor.finish()?;
+    cipher.flush()?;
+    let ret = cipher.next_writer().next_writer().finish_results().await?;
+    Ok(ret)
+}
+#[cfg(not(all(feature = "zstd", feature = "encryption")))]
+async fn compress_then_encrypt<'a>(
+    _: &'a mut impl io::Read,
+    _: Box<dyn ChainWrite<uploader::Uploader>>,
+    _: Option<i32>,
+    _: &'a mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    Err(Error::FeatureNoCipherAndZstd)
+}
+
+#[cfg(feature = "zstd")]
+async fn compress(
+    reader: &mut impl io::Read,
+    writer: Box<dyn ChainWrite<uploader::Uploader>>,
+    level: Option<i32>,
+) -> Result<Vec<Cid>, Error> {
+    let mut compressor = zstd::stream::Encoder::new(writer, level.unwrap_or(10))?;
+    io::copy(reader, &mut compressor)?;
+    let mut writer = compressor.finish()?;
+    writer.flush()?;
+    let ret = writer.next_writer().finish_results().await?;
+    Ok(ret)
+}
+#[cfg(not(feature = "zstd"))]
+async fn compress(
+    _: &mut impl io::Read,
+    _: Box<dyn ChainWrite<uploader::Uploader>>,
+    _: Option<i32>,
+) -> Result<Vec<Cid>, Error> {
+    Err(Error::FeatureNoZstd)
+}
+
+#[cfg(feature = "encryption")]
+async fn encrypt<'a>(
+    reader: &'a mut impl io::Read,
+    writer: Box<dyn ChainWrite<uploader::Uploader>>,
+    password: &'a mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    let mut cipher = cipher::Cipher::new(password, writer)?;
+    io::copy(reader, &mut cipher)?;
+    cipher.flush()?;
+    let ret = cipher.next_writer().next_writer().finish_results().await?;
+    Ok(ret)
+}
+#[cfg(not(feature = "encryption"))]
+async fn encrypt<'a>(
+    _: &'a mut impl io::Read,
+    _: Box<dyn ChainWrite<uploader::Uploader>>,
+    _: &'a mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    Err(Error::FeatureNoCipher)
+}
+
 pub async fn upload(
     reader: &mut impl io::Read,
     auth_token: impl AsRef<str>,
@@ -68,26 +145,10 @@ pub async fn upload(
 
     let results = match (with_compression, with_encryption) {
         (Some(level), Some(password)) => {
-            let cipher = crypto::Cipher::new(password, writer)?;
-            let mut compressor = zstd::stream::Encoder::new(cipher, level.unwrap_or(10))?;
-            io::copy(reader, &mut compressor)?;
-            let mut cipher = compressor.finish()?;
-            cipher.flush()?;
-            cipher.next_writer().next_writer().finish_results().await?
+            compress_then_encrypt(reader, writer, level, password).await?
         }
-        (Some(level), None) => {
-            let mut compressor = zstd::stream::Encoder::new(writer, level.unwrap_or(10))?;
-            io::copy(reader, &mut compressor)?;
-            let mut writer = compressor.finish()?;
-            writer.flush()?;
-            writer.next_writer().finish_results().await?
-        }
-        (None, Some(password)) => {
-            let mut cipher = crypto::Cipher::new(password, writer)?;
-            io::copy(reader, &mut cipher)?;
-            cipher.flush()?;
-            cipher.next_writer().next_writer().finish_results().await?
-        }
+        (Some(level), None) => compress(reader, writer, level).await?,
+        (None, Some(password)) => encrypt(reader, writer, password).await?,
         _ => {
             io::copy(reader, &mut writer)?;
             writer.next_writer().flush()?;
@@ -98,6 +159,43 @@ pub async fn upload(
     Ok(results)
 }
 
+#[cfg(all(feature = "zstd", feature = "encryption"))]
+fn decrypt_then_decompress<'a>(
+    writer: impl io::Write,
+    password: Vec<u8>,
+) -> Result<cipher::Cipher<decompressor::Decompressor<'a, impl io::Write>>, Error> {
+    let decompressor = decompressor::Decompressor::new(writer)?;
+    let cipher = cipher::Cipher::new_decryption(password, decompressor)?;
+    Ok(cipher)
+}
+#[cfg(not(all(feature = "zstd", feature = "encryption")))]
+fn decrypt_then_decompress<W: io::Write>(_: W, _: Vec<u8>) -> Result<W, Error> {
+    Err(Error::FeatureNoCipherAndZstd)
+}
+#[cfg(feature = "encryption")]
+fn decrypt(
+    writer: impl io::Write,
+    password: Vec<u8>,
+) -> Result<cipher::Cipher<impl io::Write>, Error> {
+    let cipher = cipher::Cipher::new_decryption(password, writer)?;
+    Ok(cipher)
+}
+#[cfg(not(feature = "encryption"))]
+fn decrypt<W: io::Write>(_: W, _: Vec<u8>) -> Result<W, Error> {
+    Err(Error::FeatureNoCipher)
+}
+#[cfg(feature = "zstd")]
+fn decompress<'a>(
+    writer: impl io::Write,
+) -> Result<decompressor::Decompressor<'a, impl io::Write>, Error> {
+    let decompressor = decompressor::Decompressor::new(writer)?;
+    Ok(decompressor)
+}
+#[cfg(not(feature = "zstd"))]
+fn decompress<W: io::Write>(_: W) -> Result<W, Error> {
+    Err(Error::FeatureNoZstd)
+}
+
 pub async fn download(
     url: impl AsRef<str>,
     name: impl AsRef<str>,
@@ -106,7 +204,7 @@ pub async fn download(
     start_offset: Option<u64>,
     with_decryption: Option<Vec<u8>>,
     with_decompression: bool,
-) -> Result<impl io::Write, Error> {
+) -> Result<(), Error> {
     macro_rules! gen_downloader {
         ($writer:expr) => {{
             let mut downloader = downloader::Downloader::new(progress_listener, $writer);
@@ -117,32 +215,26 @@ pub async fn download(
                     start_offset,
                 )
                 .await?;
-            downloader
         }};
     }
 
-    let ret = match (with_decompression, with_decryption) {
+    match (with_decompression, with_decryption) {
         (true, Some(password)) => {
-            let decompressor = decompressor::Decompressor::new(writer)?;
-            let cipher = crypto::Cipher::new_decryption(password, decompressor)?;
-            let downloader = gen_downloader!(cipher);
-            downloader.next().next().next()
+            let cipher = decrypt_then_decompress(writer, password)?;
+            gen_downloader!(cipher);
         }
         (false, Some(password)) => {
-            let cipher = crypto::Cipher::new_decryption(password, writer)?;
-            let downloader = gen_downloader!(cipher);
-            downloader.next().next()
+            let cipher = decrypt(writer, password)?;
+            gen_downloader!(cipher);
         }
         (true, None) => {
-            let decompressor = decompressor::Decompressor::new(writer)?;
-            let downloader = gen_downloader!(decompressor);
-            downloader.next().next()
+            let decompressor = decompress(writer)?;
+            gen_downloader!(decompressor);
         }
         _ => {
-            let downloader = gen_downloader!(writer);
-            downloader.next()
+            gen_downloader!(writer);
         }
     };
 
-    Ok(ret)
+    Ok(())
 }

@@ -3,7 +3,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
-use w3s::writer::{splitter, uploader, crypto::Cipher};
+use w3s::writer::{splitter, uploader, cipher::Cipher};
 
 fn get_file_name(path: &String) -> Option<String> {
     let path = std::path::Path::new(path);

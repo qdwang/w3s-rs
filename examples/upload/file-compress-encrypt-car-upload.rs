@@ -3,7 +3,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
-use w3s::writer::crypto::Cipher;
+use w3s::writer::cipher::Cipher;
 use w3s::writer::{car, uploader, ChainWrite};
 
 fn get_file_name(path: &String) -> Option<String> {
