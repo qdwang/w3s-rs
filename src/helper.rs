@@ -55,7 +55,7 @@ pub async fn upload(
     max_upload_concurrent: usize,
     progress_listener: Option<uploader::ProgressListener>,
     with_car: Option<Option<usize>>,
-    with_encryption: Option<impl AsMut<[u8]>>,
+    with_encryption: Option<&mut [u8]>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
     let mut writer = gen_uploader(
@@ -67,8 +67,8 @@ pub async fn upload(
     );
 
     let results = match (with_compression, with_encryption) {
-        (Some(level), Some(mut password)) => {
-            let cipher = crypto::Cipher::new(password.as_mut(), writer)?;
+        (Some(level), Some(password)) => {
+            let cipher = crypto::Cipher::new(password, writer)?;
             let mut compressor = zstd::stream::Encoder::new(cipher, level.unwrap_or(10))?;
             io::copy(reader, &mut compressor)?;
             let mut cipher = compressor.finish()?;
@@ -82,8 +82,8 @@ pub async fn upload(
             writer.flush()?;
             writer.next_writer().finish_results().await?
         }
-        (None, Some(mut password)) => {
-            let mut cipher = crypto::Cipher::new(password.as_mut(), writer)?;
+        (None, Some(password)) => {
+            let mut cipher = crypto::Cipher::new(password, writer)?;
             io::copy(reader, &mut cipher)?;
             cipher.flush()?;
             cipher.next_writer().next_writer().finish_results().await?
