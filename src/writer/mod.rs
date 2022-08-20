@@ -1,5 +1,6 @@
 use std::io;
 
+pub mod car_util;
 pub mod car;
 
 pub mod splitter;
