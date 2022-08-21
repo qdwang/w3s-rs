@@ -3,7 +3,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
-use w3s::writer::{splitter, uploader};
+use w3s::writer::{ChainWrite, splitter, uploader};
 
 fn get_file_name(path: &String) -> Option<String> {
     let path = std::path::Path::new(path);
@@ -46,7 +46,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
     let mut splitter = compressor.finish()?;
     splitter.flush()?; // this line is needed to upload the final part of the file
 
-    let mut uploader = w3s::take_nth_writer!(splitter);
+    let mut uploader = splitter.next();
     let results = uploader.finish_results().await?;
     println!("results: {:?}", results);
 

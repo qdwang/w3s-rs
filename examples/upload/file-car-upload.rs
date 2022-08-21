@@ -3,7 +3,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
-use w3s::writer::{car, uploader};
+use w3s::writer::{ChainWrite, car, uploader};
 
 fn get_file_name(path: &String) -> Option<String> {
     let path = std::path::Path::new(path);
@@ -42,7 +42,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
     io::copy(&mut file, &mut car)?;
     car.flush()?;
 
-    let mut uploader = w3s::take_nth_writer!(car);
+    let mut uploader = car.next();
     let results = uploader.finish_results().await?;
     println!("results: {:?}", results);
 
