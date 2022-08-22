@@ -33,7 +33,7 @@ impl<'a, W: io::Write> ChainWrite<W> for Decompressor<'a, W> {
     fn next(self) -> W {
         self.next_writer.into_inner()
     }
-    fn next_writer(&mut self) -> &mut W {
+    fn next_mut(&mut self) -> &mut W {
         self.next_writer.get_mut()
     }
 }

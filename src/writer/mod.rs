@@ -15,6 +15,6 @@ pub mod cipher;
 pub mod decompressor;
 
 pub trait ChainWrite<W: io::Write>: io::Write {
-    fn next_writer(&mut self) -> &mut W;
+    fn next_mut(&mut self) -> &mut W;
     fn next(self) -> W;
 }

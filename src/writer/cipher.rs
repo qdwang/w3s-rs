@@ -203,7 +203,7 @@ impl<W: io::Write> io::Write for Cipher<W> {
                 prefix.extend(self.salt);
                 prefix.extend(self.nonce);
 
-                self.next_writer().write(&prefix)?;
+                self.next_mut().write(&prefix)?;
             }
 
             // use salt + nonce as associated_data to update the mac
@@ -215,13 +215,13 @@ impl<W: io::Write> io::Write for Cipher<W> {
         if let Some(raw) = self.decryption.take() {
             if raw.len() > 0 {
                 let decrypted = self.decrypt(&raw);
-                self.next_writer().write(&decrypted)?;
+                self.next_mut().write(&decrypted)?;
             }
             self.decryption = Some(buf.to_vec())
         } else {
             let encrypted = self.encrypt(&buf);
             // since the Upload writer shouldn't be the next one, there is no needs to handle the 0 written length condition.
-            self.next_writer().write(&encrypted)?;
+            self.next_mut().write(&encrypted)?;
         }
 
         Ok(buf_size)
@@ -231,7 +231,7 @@ impl<W: io::Write> io::Write for Cipher<W> {
         if let Some(raw) = self.decryption.take() {
             let (buf, tag) = raw.split_at(raw.len() - 16);
             let decrypted = self.decrypt(&buf);
-            self.next_writer().write(&decrypted)?;
+            self.next_mut().write(&decrypted)?;
             self.decryption = Some(tag.to_vec());
         }
 
@@ -247,10 +247,10 @@ impl<W: io::Write> io::Write for Cipher<W> {
                 )))?;
             }
         } else {
-            self.next_writer().write(&mac)?;
+            self.next_mut().write(&mac)?;
         }
 
-        self.next_writer().flush()?;
+        self.next_mut().flush()?;
 
         Ok(())
     }
@@ -260,7 +260,7 @@ impl<W: io::Write> ChainWrite<W> for Cipher<W> {
     fn next(self) -> W {
         self.next_writer
     }
-    fn next_writer(&mut self) -> &mut W {
+    fn next_mut(&mut self) -> &mut W {
         &mut self.next_writer
     }
 }

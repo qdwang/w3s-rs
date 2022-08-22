@@ -115,7 +115,7 @@ impl<W :io::Write> ChainWrite<W> for Downloader<W> {
     fn next(self) -> W {
         self.next_writer
     }
-    fn next_writer(&mut self) -> &mut W {
+    fn next_mut(&mut self) -> &mut W {
         &mut self.next_writer
     }
 }

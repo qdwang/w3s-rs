@@ -225,13 +225,13 @@ impl<'a, W: io::Write> io::Write for Car<'a, W> {
 
         // this scope is for memory release for car(Vec<u8>)
         let need_flush = if let Some(car) = result {
-            self.next_writer().write(&car)? == 0
+            self.next_mut().write(&car)? == 0
         } else {
             false
         };
 
         if need_flush {
-            self.next_writer().flush()?;
+            self.next_mut().flush()?;
         }
 
         Ok(buf.len())
@@ -240,7 +240,7 @@ impl<'a, W: io::Write> io::Write for Car<'a, W> {
         // flush the remaining buf
         let result = self.buf_to_chunk()?;
         if let Some(car) = result {
-            self.next_writer().write(&car)?;
+            self.next_mut().write(&car)?;
         }
 
         // combine raw chunks to a file PBNode
@@ -251,10 +251,10 @@ impl<'a, W: io::Write> io::Write for Car<'a, W> {
         // flush the remaining chunks
         let result = self.chunks_extend((file_cid, file_pb_bytes), Some(root))?;
         if let Some(car) = result {
-            self.next_writer().write(&car)?;
+            self.next_mut().write(&car)?;
         }
 
-        self.next_writer().flush()?;
+        self.next_mut().flush()?;
         Ok(())
     }
 }
@@ -264,7 +264,7 @@ impl<'a, W: io::Write> ChainWrite<W> for Car<'a, W> {
         self.next_writer
     }
 
-    fn next_writer(&mut self) -> &mut W {
+    fn next_mut(&mut self) -> &mut W {
         &mut self.next_writer
     }
 }

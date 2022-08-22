@@ -24,14 +24,14 @@ impl<W: io::Write> io::Write for PlainSplitter<W> {
         if self.chunk.len() > MAX_CHUNK_SIZE {
             let written_len = {
                 let chunk = mem::replace(&mut self.chunk, vec![]);
-                self.next_writer().write(&chunk)?
+                self.next_mut().write(&chunk)?
             };
 
             // the written length result won't propagate
             // abnormal written len can cause the flush function from the next writer to do some additional check, async await or pause needs.
             // so if the `write` implementation of a Writer can return 0, it means it's `flush` function is used for additional usage.
             if written_len == 0 {
-                self.next_writer().flush()?;
+                self.next_mut().flush()?;
             }
         }
         Ok(buf.len())
@@ -39,9 +39,9 @@ impl<W: io::Write> io::Write for PlainSplitter<W> {
     fn flush(&mut self) -> io::Result<()> {
         {
             let chunk = mem::replace(&mut self.chunk, vec![]);
-            self.next_writer().write(&chunk)?;
+            self.next_mut().write(&chunk)?;
         }
-        self.next_writer().flush()?;
+        self.next_mut().flush()?;
         Ok(())
     }
 }
@@ -50,7 +50,7 @@ impl<W: io::Write> ChainWrite<W> for PlainSplitter<W> {
     fn next(self) -> W {
         self.next_writer
     }
-    fn next_writer(&mut self) -> &mut W {
+    fn next_mut(&mut self) -> &mut W {
         &mut self.next_writer
     }
 }

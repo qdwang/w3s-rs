@@ -69,7 +69,7 @@ async fn compress_then_encrypt<'a>(
     io::copy(reader, &mut compressor)?;
     let mut cipher = compressor.finish()?;
     cipher.flush()?;
-    let ret = cipher.next_writer().next_writer().finish_results().await?;
+    let ret = cipher.next_mut().next_mut().finish_results().await?;
     Ok(ret)
 }
 #[cfg(not(all(feature = "zstd", feature = "encryption")))]
@@ -92,7 +92,7 @@ async fn compress(
     io::copy(reader, &mut compressor)?;
     let mut writer = compressor.finish()?;
     writer.flush()?;
-    let ret = writer.next_writer().finish_results().await?;
+    let ret = writer.next_mut().finish_results().await?;
     Ok(ret)
 }
 #[cfg(not(feature = "zstd"))]
@@ -113,7 +113,7 @@ async fn encrypt<'a>(
     let mut cipher = cipher::Cipher::new(password, writer)?;
     io::copy(reader, &mut cipher)?;
     cipher.flush()?;
-    let ret = cipher.next_writer().next_writer().finish_results().await?;
+    let ret = cipher.next_mut().next_mut().finish_results().await?;
     Ok(ret)
 }
 #[cfg(not(feature = "encryption"))]
@@ -151,8 +151,8 @@ pub async fn upload(
         (None, Some(password)) => encrypt(reader, writer, password).await?,
         _ => {
             io::copy(reader, &mut writer)?;
-            writer.next_writer().flush()?;
-            writer.next_writer().finish_results().await?
+            writer.next_mut().flush()?;
+            writer.next_mut().finish_results().await?
         }
     };
 
