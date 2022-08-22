@@ -1,5 +1,6 @@
 use std::io;
 
+pub mod dir;
 pub mod car_util;
 pub mod car;
 
