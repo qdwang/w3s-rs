@@ -1,5 +1,7 @@
 use super::super::iroh_car;
 use super::*;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::{borrow::Cow, collections::HashMap, mem};
 
 use cid::Cid;
@@ -33,12 +35,53 @@ impl<'a> ToVec for UnixFs<'a> {
     }
 }
 
+#[derive(Debug)]
 pub enum DirectoryItem {
-    File(String, u64),
+    File(String, String, u64),
     Directory(String, Vec<DirectoryItem>),
 }
 
 impl DirectoryItem {
+    fn from_path(
+        path: &str,
+        filter: Option<fn(name: &str, is_file: bool) -> bool>,
+    ) -> io::Result<(Vec<Self>, u64)> {
+        let path_buf = Path::new(path).to_path_buf();
+        let mut id = 0;
+        let result = Self::from_path_buf(path_buf, &mut id, filter.unwrap_or(|_, _| true))?;
+        Ok((result, id))
+    }
+
+    fn from_path_buf(
+        path: PathBuf,
+        id: &mut u64,
+        filter: fn(&str, bool) -> bool,
+    ) -> io::Result<Vec<Self>> {
+        let dir = fs::read_dir(path)?;
+        let mut result = vec![];
+        for item in dir {
+            let entry = item?;
+            let metadata = entry.metadata()?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !filter(&name, metadata.is_file()) {
+                continue;
+            }
+
+            if metadata.is_dir() {
+                result.push(Self::Directory(
+                    name,
+                    Self::from_path_buf(entry.path(), id, filter)?,
+                ));
+            } else if metadata.is_file() {
+                let path = entry.path().to_string_lossy().to_string();
+                *id += 1;
+                result.push(Self::File(name, path, *id));
+            }
+        }
+
+        Ok(result)
+    }
+
     fn to_unixfs_struct(&self, id_map: &HashMap<u64, &[UnixFsStruct]>) -> UnixFsStruct {
         match self {
             Self::File(name, id) => {
@@ -47,7 +90,7 @@ impl DirectoryItem {
                 } else {
                     empty_item()
                 }
-            },
+            }
             Self::Directory(name, sub_items) => {
                 let items: Vec<UnixFsStruct> = sub_items
                     .iter()
