@@ -13,7 +13,7 @@ use quick_protobuf::message::MessageWrite;
 use quick_protobuf::Writer;
 use unixfs_v1::{PBLink, PBNode, UnixFs, UnixFsType};
 
-const MAX_CAR_SIZE: usize = 104752742; // 99.9mb
+pub const MAX_CAR_SIZE: usize = 104752742; // 99.9mb
 
 trait ToVec {
     fn to_vec(&self) -> Vec<u8>;
@@ -37,7 +37,9 @@ impl<'a> ToVec for UnixFs<'a> {
 
 #[derive(Debug)]
 pub enum DirectoryItem {
+    /// name, path, id
     File(String, String, u64),
+    /// name, sub_items
     Directory(String, Vec<DirectoryItem>),
 }
 
@@ -82,9 +84,9 @@ impl DirectoryItem {
         Ok(result)
     }
 
-    fn to_unixfs_struct(&self, id_map: &HashMap<u64, &[UnixFsStruct]>) -> UnixFsStruct {
+    pub fn to_unixfs_struct(&self, id_map: &HashMap<u64, Vec<UnixFsStruct>>) -> UnixFsStruct {
         match self {
-            Self::File(name, id) => {
+            Self::File(name, _, id) => {
                 if let Some(blocks) = id_map.get(id) {
                     gen_pbnode_from_blocks(name.clone(), blocks)
                 } else {
@@ -147,11 +149,11 @@ fn empty_item() -> UnixFsStruct {
     }
 }
 
-fn gen_car(
+pub fn gen_car(
     blocks: &mut [UnixFsStruct],
-    unixfs_struct: Option<UnixFsStruct>,
+    root_struct: Option<UnixFsStruct>,
 ) -> Result<Vec<u8>, iroh_car::Error> {
-    let root = unixfs_struct.unwrap_or(empty_item());
+    let root = root_struct.unwrap_or(empty_item());
     let header = CarHeader::new(vec![root.cid]);
 
     let mut buffer = Vec::with_capacity(MAX_CAR_SIZE);
@@ -167,18 +169,20 @@ fn gen_car(
     Ok(buffer)
 }
 
-fn gen_block(content: &[u8]) -> UnixFsStruct {
-    let digest = Blake2b256.digest(content);
-    let cid = Cid::new_v1(0x55, digest);
-    UnixFsStruct {
-        name: None,
-        cid,
-        data: content.to_vec(),
-        size: content.len() as u64,
-    }
+pub fn gen_blocks(buf: Vec<u8>, block_size: usize) -> Vec<UnixFsStruct> {
+    buf.chunks(block_size).map(|chunk| {
+        let digest = Blake2b256.digest(chunk);
+        let cid = Cid::new_v1(0x55, digest);
+        UnixFsStruct {
+            name: None,
+            cid,
+            data: chunk.to_vec(),
+            size: chunk.len() as u64,
+        }
+    }).collect()
 }
 
-fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
+pub fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
     let data_bytes = UnixFs {
         Type: UnixFsType::Directory,
         Data: None,
@@ -221,7 +225,7 @@ fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
     }
 }
 
-fn gen_pbnode_from_blocks(name: String, blocks: &[UnixFsStruct]) -> UnixFsStruct {
+pub fn gen_pbnode_from_blocks(name: String, blocks: &[UnixFsStruct]) -> UnixFsStruct {
     let mut filesize = 0u64;
     let (links, blocksizes) = blocks
         .iter()

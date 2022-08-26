@@ -38,7 +38,14 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
     );
-    let car = car::Car::new(filename, 1024 * 1024, uploader);
+
+    let car = car::Car::new(
+        1,
+        vec![car::SingleFileToDirectoryItem(&filename, None)],
+        None,
+        None,
+        uploader,
+    );
 
     let mut pwd = b"abcd1234".to_owned();
     let cipher = Cipher::new(&mut pwd, car)?;

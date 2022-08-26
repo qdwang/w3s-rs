@@ -46,10 +46,14 @@ fn gen_uploader(
         progress_listener,
     );
 
+    let dir_item = car::SingleFileToDirectoryItem(name.as_ref(), None);
+
     if let Some(custom_block_size) = with_car {
         Box::new(car::Car::new(
-            name.as_ref().to_owned(),
-            custom_block_size.unwrap_or(1024 * 1024),
+            1,
+            vec![dir_item],
+            None,
+            custom_block_size,
             uploader,
         ))
     } else {

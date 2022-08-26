@@ -37,7 +37,14 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
     );
-    let mut car = car::Car::new(filename, 1024 * 1024, uploader);
+
+    let mut car = car::Car::new(
+        1,
+        vec![car::SingleFileToDirectoryItem(&filename, None)],
+        None,
+        None,
+        uploader,
+    );
 
     io::copy(&mut file, &mut car)?;
     car.flush()?;
