@@ -2,6 +2,7 @@ use super::super::iroh_car;
 use super::*;
 use car_util::*;
 use std::cell::RefCell;
+use std::fs;
 use std::rc::Rc;
 use std::{borrow::Cow, collections::HashMap, io, mem};
 
@@ -27,10 +28,9 @@ impl From<Error> for io::Error {
 
 pub struct Car<W: io::Write> {
     files_count: usize,
-    curr_id: u64,
     remote_file_id: Rc<RefCell<u64>>,
     id_map: HashMap<u64, Vec<UnixFsStruct>>,
-    dir_items: Vec<DirectoryItem>,
+    dir_items: Rc<Vec<DirectoryItem>>,
     buf: Vec<u8>,
     block_size: usize,
     next_writer: W,
@@ -43,19 +43,17 @@ pub fn SingleFileToDirectoryItem(name: &str, path: Option<&str>) -> DirectoryIte
 impl<W: io::Write> Car<W> {
     pub fn new(
         files_count: usize,
-        dir_items: Vec<DirectoryItem>,
+        dir_items: Rc<Vec<DirectoryItem>>,
         remote_file_id: Option<Rc<RefCell<u64>>>,
         custom_block_size: Option<usize>,
         next_writer: W,
     ) -> Car<W> {
         let block_size = custom_block_size.unwrap_or(1024 * 1024);
         let remote_file_id = remote_file_id.unwrap_or(Rc::new(RefCell::new(0)));
-        let curr_id = *remote_file_id.borrow();
-        
+
         Car {
             files_count,
             dir_items,
-            curr_id,
             remote_file_id,
             id_map: HashMap::new(),
             buf: Vec::with_capacity(block_size + block_size / 10),
@@ -79,17 +77,12 @@ impl<W: io::Write> Car<W> {
         Ok(Some(car))
     }
     fn buf_extend(&mut self, buf: &[u8]) -> Result<Option<Vec<u8>>, Error> {
-        let remote_id = *self.remote_file_id.borrow();
-        let prepared_buf = if self.curr_id == remote_id {
-            self.buf.extend(buf);
-            if self.buf.len() >= MAX_CAR_SIZE {
-                Some(mem::replace(&mut self.buf, vec![]))
-            } else {
-                None
-            }
+        self.buf.extend(buf);
+
+        let prepared_buf = if self.buf.len() >= MAX_CAR_SIZE {
+            Some(mem::replace(&mut self.buf, vec![]))
         } else {
-            self.curr_id = remote_id;
-            Some(mem::replace(&mut self.buf, buf.to_vec()))
+            None
         };
 
         if let Some(buf) = prepared_buf {
@@ -126,14 +119,14 @@ impl<W: io::Write> io::Write for Car<W> {
         self.next_mut().flush()?;
 
         if self.files_count == self.id_map.len() {
-            let unixfs_structs: Vec<_> = self
+            let mut unixfs_structs: Vec<_> = self
                 .dir_items
                 .iter()
                 .map(|item| item.to_unixfs_struct(&self.id_map))
                 .collect();
 
             let root = gen_dir(None, &unixfs_structs);
-            let car = gen_car(&mut [], Some(root))
+            let car = gen_car(&mut unixfs_structs, Some(root))
                 .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, e))?;
 
             self.next_mut().write(&car)?;

@@ -11,8 +11,8 @@ pub struct Dir<W: io::Write> {
 }
 
 impl<W: io::Write> Dir<W> {
-    pub fn new(next_writer: W) -> Self {
-        Dir { curr_file: Rc::new(RefCell::new(0)), next_writer }
+    pub fn new(curr_file_id: Rc<RefCell<u64>>, next_writer: W) -> Self {
+        Dir { curr_file: curr_file_id, next_writer }
     }
 
     pub fn walk_write(&mut self, dir_items: &[DirectoryItem]) -> io::Result<()> {
@@ -31,5 +31,9 @@ impl<W: io::Write> Dir<W> {
         }
 
         Ok(())
+    }
+
+    pub fn next(self) -> W {
+        self.next_writer
     }
 }

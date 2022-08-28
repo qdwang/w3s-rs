@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use w3s::writer::cipher::Cipher;
 use w3s::writer::{car, uploader, ChainWrite};
@@ -41,7 +42,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
 
     let car = car::Car::new(
         1,
-        vec![car::SingleFileToDirectoryItem(&filename, None)],
+        Rc::new(vec![car::SingleFileToDirectoryItem(&filename, None)]),
         None,
         None,
         uploader,

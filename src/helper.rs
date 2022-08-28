@@ -1,9 +1,13 @@
 use cid::Cid;
 use thiserror::Error;
 
+use crate::writer::car_util::DirectoryItem;
+
 use super::writer::*;
+use std::cell::RefCell;
 use std::io::{self, Write};
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Error, Debug)]
@@ -51,7 +55,7 @@ fn gen_uploader(
     if let Some(custom_block_size) = with_car {
         Box::new(car::Car::new(
             1,
-            vec![dir_item],
+            Rc::new(vec![dir_item]),
             None,
             custom_block_size,
             uploader,
@@ -127,6 +131,43 @@ async fn encrypt<'a>(
     _: &'a mut [u8],
 ) -> Result<Vec<Cid>, Error> {
     Err(Error::FeatureNoCipher)
+}
+
+pub async fn upload_dir(
+    dir_path: &str,
+    auth_token: String,
+    max_upload_concurrent: usize,
+    progress_listener: Option<uploader::ProgressListener>,
+    with_encryption: Option<&mut [u8]>,
+    with_compression: Option<Option<i32>>,
+) -> Result<Vec<Cid>, Error> {
+    let uploader = uploader::Uploader::new(
+        auth_token,
+        dir_path.to_owned(),
+        uploader::UploadType::Car,
+        max_upload_concurrent,
+        progress_listener,
+    );
+
+    let (dir_items, count) = DirectoryItem::from_path(dir_path, None)?;
+    let dir_items_rc = Rc::new(dir_items);
+
+    let curr_file_id = Rc::new(RefCell::new(0));
+
+    let car = car::Car::new(
+        count as usize,
+        dir_items_rc.clone(),
+        Some(curr_file_id.clone()),
+        None,
+        uploader,
+    );
+    let mut dir = dir::Dir::new(curr_file_id, car);
+
+    dir.walk_write(&dir_items_rc)?;
+
+    let results = dir.next().next().finish_results().await?;
+
+    Ok(results)
 }
 
 pub async fn upload(

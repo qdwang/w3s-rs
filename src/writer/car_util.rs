@@ -44,7 +44,7 @@ pub enum DirectoryItem {
 }
 
 impl DirectoryItem {
-    fn from_path(
+    pub fn from_path(
         path: &str,
         filter: Option<fn(name: &str, is_file: bool) -> bool>,
     ) -> io::Result<(Vec<Self>, u64)> {
@@ -104,6 +104,7 @@ impl DirectoryItem {
     }
 }
 
+#[derive(Debug)]
 pub struct UnixFsStruct {
     name: Option<String>,
     cid: Cid,
@@ -120,6 +121,7 @@ impl UnixFsStruct {
     }
 }
 
+/// bafykbzacebrixudpac7a56ypc7lxhwqe5nyvvmyc6mhurq4pc3zmsmymr2cum
 fn empty_item() -> UnixFsStruct {
     let data_bytes = UnixFs {
         Type: UnixFsType::Raw,

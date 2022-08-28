@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::{
     cmp, fmt, io, mem,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, fs::File,
 };
 use thiserror::Error;
 use tokio::{
@@ -23,7 +23,7 @@ pub enum Error {
     #[error("Cid parsing error")]
     CidError(#[from] cid::Error),
     #[error("IO error")]
-    IoError(#[from] io::Error)
+    IoError(#[from] io::Error),
 }
 
 #[derive(Copy, Clone)]
@@ -72,15 +72,16 @@ impl Uploader {
         }
     }
 
-    pub fn pause_to_complete_tasks(&mut self) {
+    pub fn pause_to_complete_tasks(&mut self) -> Result<(), Error> {
         if self.tasks.len() == self.max_concurrent {
-            tokio::task::block_in_place(|| {
-                let result = Handle::current().block_on(self.finish_any_result());
-                if let Ok(cid) = result {
-                    self.results.push(cid);
-                }
-            });
+            tokio::task::block_in_place(|| -> Result<(), Error> {
+                let cid = Handle::current().block_on(self.finish_any_result())?;
+                self.results.push(cid);
+                Ok(())
+            })?;
         }
+
+        Ok(())
     }
 
     pub async fn finish_results(&mut self) -> Result<Vec<Cid>, Error> {
@@ -171,7 +172,8 @@ impl io::Write for Uploader {
 
     // this `flush` function is to complete concurrent uploading connections by blocking current thread.
     fn flush(&mut self) -> io::Result<()> {
-        self.pause_to_complete_tasks();
+        self.pause_to_complete_tasks()
+            .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, e))?;
         Ok(())
     }
 }
