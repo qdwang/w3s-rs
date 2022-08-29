@@ -84,13 +84,15 @@ impl DirectoryItem {
         Ok(result)
     }
 
-    pub fn to_unixfs_struct(&self, id_map: &HashMap<u64, Vec<UnixFsStruct>>, collect_blocks: &mut Vec<UnixFsStruct>) -> UnixFsStruct {
-        match self {
+    pub fn to_unixfs_struct(
+        &self,
+        id_map: &HashMap<u64, Vec<UnixFsStruct>>,
+        collect_blocks: &mut Vec<UnixFsStruct>,
+    ) -> UnixFsStruct {
+        let block = match self {
             Self::File(name, _, id) => {
                 if let Some(blocks) = id_map.get(id) {
-                    let block = gen_pbnode_from_blocks(name.clone(), blocks);
-                    collect_blocks.push(block.clone());
-                    block
+                    gen_pbnode_from_blocks(name.clone(), blocks)
                 } else {
                     empty_item()
                 }
@@ -100,11 +102,12 @@ impl DirectoryItem {
                     .iter()
                     .map(|x| x.to_unixfs_struct(id_map, collect_blocks))
                     .collect();
-                let block = gen_dir(Some(name.clone()), &items);
-                collect_blocks.push(block.clone());
-                block
+                gen_dir(Some(name.clone()), &items)
             }
-        }
+        };
+        
+        collect_blocks.push(block.clone());
+        block
     }
 }
 

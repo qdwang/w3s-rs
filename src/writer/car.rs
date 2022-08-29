@@ -111,12 +111,14 @@ impl<W: io::Write> io::Write for Car<W> {
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
-        let remain_buf = mem::replace(&mut self.buf, vec![]);
-        let car_data = self.gen_car_from_buf(remain_buf)?;
-        if let Some(car) = car_data {
-            self.next_mut().write(&car)?;
+        if self.buf.len() > 0 {
+            let remain_buf = mem::replace(&mut self.buf, vec![]);
+            let car_data = self.gen_car_from_buf(remain_buf)?;
+            if let Some(car) = car_data {
+                self.next_mut().write(&car)?;
+            }
+            self.next_mut().flush()?;
         }
-        self.next_mut().flush()?;
 
         if self.files_count == self.id_map.len() {
             let mut blocks = vec![];
