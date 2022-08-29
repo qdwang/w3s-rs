@@ -52,7 +52,7 @@ pub async fn fetch_mac(url: &str) -> Result<Vec<u8>, Error> {
 impl<W: io::Write> Downloader<W> {
     pub async fn download(
         &mut self,
-        name: Arc<String>,
+        name: String,
         url: &str,
         start_offset: Option<u64>,
     ) -> Result<(), Error> {

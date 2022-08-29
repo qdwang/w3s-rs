@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::io::{self, Write};
 
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -31,7 +31,7 @@ pub enum Error {
     FeatureNoCipherAndZstd,
 }
 
-fn gen_uploader(
+fn gen_single_file_uploader(
     auth_token: impl AsRef<str>,
     name: impl AsRef<str>,
     max_upload_concurrent: usize,
@@ -41,6 +41,7 @@ fn gen_uploader(
     let uploader = uploader::Uploader::new(
         auth_token.as_ref().to_owned(),
         name.as_ref().to_owned(),
+        None,
         if with_car.is_some() {
             uploader::UploadType::Car
         } else {
@@ -50,7 +51,7 @@ fn gen_uploader(
         progress_listener,
     );
 
-    let dir_item = car::SingleFileToDirectoryItem(name.as_ref(), None);
+    let dir_item = car::single_file_to_directory_item(name.as_ref(), None);
 
     if let Some(custom_block_size) = with_car {
         Box::new(car::Car::new(
@@ -135,21 +136,24 @@ async fn encrypt<'a>(
 
 pub async fn upload_dir(
     dir_path: &str,
+    file_filter: Option<fn(name: &str, is_file: bool) -> bool>,
     auth_token: String,
     max_upload_concurrent: usize,
     progress_listener: Option<uploader::ProgressListener>,
     with_encryption: Option<&mut [u8]>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
+    let name = Arc::new(Mutex::new(dir_path.to_owned()));
     let uploader = uploader::Uploader::new(
         auth_token,
         dir_path.to_owned(),
+        Some(name.clone()),
         uploader::UploadType::Car,
         max_upload_concurrent,
         progress_listener,
     );
 
-    let (dir_items, count) = DirectoryItem::from_path(dir_path, None)?;
+    let (dir_items, count) = DirectoryItem::from_path(dir_path, file_filter)?;
     let dir_items_rc = Rc::new(dir_items);
 
     let curr_file_id = Rc::new(RefCell::new(0));
@@ -161,7 +165,7 @@ pub async fn upload_dir(
         None,
         uploader,
     );
-    let mut dir = dir::Dir::new(curr_file_id, car);
+    let mut dir = dir::Dir::new(name, curr_file_id, car);
 
     dir.walk_write(&dir_items_rc)?;
 
@@ -180,7 +184,7 @@ pub async fn upload(
     with_encryption: Option<&mut [u8]>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
-    let mut writer = gen_uploader(
+    let mut writer = gen_single_file_uploader(
         auth_token,
         name,
         max_upload_concurrent,
@@ -254,11 +258,7 @@ pub async fn download(
         ($writer:expr) => {{
             let mut downloader = downloader::Downloader::new(progress_listener, $writer);
             downloader
-                .download(
-                    Arc::new(name.as_ref().to_owned()),
-                    url.as_ref(),
-                    start_offset,
-                )
+                .download(name.as_ref().to_owned(), url.as_ref(), start_offset)
                 .await?;
         }};
     }

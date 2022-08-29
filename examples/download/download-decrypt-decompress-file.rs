@@ -1,7 +1,7 @@
 use anyhow::Result;
-use std::fs::{OpenOptions};
+use std::env;
+use std::fs::OpenOptions;
 use std::sync::{Arc, Mutex};
-use std::{env};
 use w3s::writer::cipher::Cipher;
 use w3s::writer::decompressor;
 use w3s::writer::downloader;
@@ -35,7 +35,7 @@ async fn download(url: &String, path: &String) -> Result<()> {
         cipher,
     );
     downloader
-        .download(Arc::new(path.clone()), url.as_str(), None)
+        .download(path.clone(), url.as_str(), None)
         .await?;
 
     println!("file downloaded to path:{path}");

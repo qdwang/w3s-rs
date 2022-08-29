@@ -84,11 +84,13 @@ impl DirectoryItem {
         Ok(result)
     }
 
-    pub fn to_unixfs_struct(&self, id_map: &HashMap<u64, Vec<UnixFsStruct>>) -> UnixFsStruct {
+    pub fn to_unixfs_struct(&self, id_map: &HashMap<u64, Vec<UnixFsStruct>>, collect_blocks: &mut Vec<UnixFsStruct>) -> UnixFsStruct {
         match self {
             Self::File(name, _, id) => {
                 if let Some(blocks) = id_map.get(id) {
-                    gen_pbnode_from_blocks(name.clone(), blocks)
+                    let block = gen_pbnode_from_blocks(name.clone(), blocks);
+                    collect_blocks.push(block.clone());
+                    block
                 } else {
                     empty_item()
                 }
@@ -96,15 +98,17 @@ impl DirectoryItem {
             Self::Directory(name, sub_items) => {
                 let items: Vec<UnixFsStruct> = sub_items
                     .iter()
-                    .map(|x| x.to_unixfs_struct(id_map))
+                    .map(|x| x.to_unixfs_struct(id_map, collect_blocks))
                     .collect();
-                gen_dir(Some(name.clone()), &items)
+                let block = gen_dir(Some(name.clone()), &items);
+                collect_blocks.push(block.clone());
+                block
             }
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnixFsStruct {
     name: Option<String>,
     cid: Cid,
@@ -172,16 +176,18 @@ pub fn gen_car(
 }
 
 pub fn gen_blocks(buf: Vec<u8>, block_size: usize) -> Vec<UnixFsStruct> {
-    buf.chunks(block_size).map(|chunk| {
-        let digest = Blake2b256.digest(chunk);
-        let cid = Cid::new_v1(0x55, digest);
-        UnixFsStruct {
-            name: None,
-            cid,
-            data: chunk.to_vec(),
-            size: chunk.len() as u64,
-        }
-    }).collect()
+    buf.chunks(block_size)
+        .map(|chunk| {
+            let digest = Blake2b256.digest(chunk);
+            let cid = Cid::new_v1(0x55, digest);
+            UnixFsStruct {
+                name: None,
+                cid,
+                data: chunk.to_vec(),
+                size: chunk.len() as u64,
+            }
+        })
+        .collect()
 }
 
 pub fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
@@ -219,11 +225,12 @@ pub fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
     let digest = Blake2b256.digest(&node_bytes);
     let cid = Cid::new_v1(DagPbCodec.into(), digest);
 
+    let size = dir_size + node_bytes.len() as u64;
     UnixFsStruct {
         name,
         cid,
         data: node_bytes,
-        size: dir_size,
+        size,
     }
 }
 

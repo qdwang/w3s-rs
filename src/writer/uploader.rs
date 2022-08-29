@@ -4,9 +4,11 @@ use futures::TryFutureExt;
 use reqwest::{Body, Client};
 use serde::Deserialize;
 use std::{
-    cmp, fmt, io, mem,
+    cmp, fmt,
+    fs::File,
+    io, mem,
     str::FromStr,
-    sync::{Arc, Mutex}, fs::File,
+    sync::{Arc, Mutex},
 };
 use thiserror::Error;
 use tokio::{
@@ -42,11 +44,12 @@ impl fmt::Display for UploadType {
 }
 
 pub type ProgressListener =
-    Arc<Mutex<dyn FnMut(Arc<String>, usize, usize, usize) + Send + Sync + 'static>>;
+    Arc<Mutex<dyn FnMut(String, usize, usize, usize) + Send + Sync + 'static>>;
 pub struct Uploader {
     upload_type: UploadType,
     auth_token: Arc<String>,
-    name: Arc<String>,
+    sync_file_name: Arc<Mutex<String>>,
+    w3s_name: Arc<String>,
     max_concurrent: usize,
     tasks: Vec<JoinHandle<Result<Cid, Error>>>,
     results: Vec<Cid>,
@@ -56,15 +59,18 @@ pub struct Uploader {
 impl Uploader {
     pub fn new(
         auth_token: String,
-        name: String,
+        w3s_name: String,
+        sync_file_name: Option<Arc<Mutex<String>>>,
         upload_type: UploadType,
         max_concurrent: usize,
         progress_listener: Option<ProgressListener>,
     ) -> Self {
+        let sync_file_name = sync_file_name.unwrap_or(Arc::new(Mutex::new(w3s_name.clone())));
         Uploader {
             upload_type,
             auth_token: Arc::new(auth_token),
-            name: Arc::new(name),
+            w3s_name: Arc::new(w3s_name),
+            sync_file_name,
             max_concurrent,
             tasks: vec![],
             results: vec![],
@@ -108,7 +114,8 @@ impl Uploader {
 
     pub async fn upload(
         upload_type: UploadType,
-        name: Arc<String>,
+        w3s_name: Arc<String>,
+        sync_file_name: Arc<Mutex<String>>,
         part: usize,
         auth_token: Arc<String>,
         data: Arc<Vec<u8>>,
@@ -118,7 +125,7 @@ impl Uploader {
 
         let upload_fn = || {
             let body = Body::wrap_stream(ProgressStream {
-                name: name.clone(),
+                name: sync_file_name.clone(),
                 part,
                 data: data.clone(),
                 cursor: 0,
@@ -127,7 +134,7 @@ impl Uploader {
 
             Client::new()
                 .post(api.clone().as_str())
-                .header("X-NAME", name.clone().as_str())
+                .header("X-NAME", w3s_name.clone().as_str())
                 .header("accept", "application/json")
                 .bearer_auth(auth_token.clone())
                 .body(body)
@@ -151,7 +158,8 @@ impl io::Write for Uploader {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let upload_future = Uploader::upload(
             self.upload_type,
-            self.name.clone(),
+            self.w3s_name.clone(),
+            self.sync_file_name.clone(),
             self.tasks.len() + self.results.len(),
             self.auth_token.clone(),
             Arc::new(buf.to_vec()),
@@ -185,7 +193,7 @@ struct Response {
 
 #[derive(Clone)]
 pub struct ProgressStream {
-    name: Arc<String>,
+    name: Arc<Mutex<String>>,
     part: usize,
     data: Arc<Vec<u8>>,
     cursor: usize,
@@ -210,8 +218,8 @@ impl futures::Stream for ProgressStream {
             result.copy_from_slice(&self.data[start_index..self.cursor]);
 
             if let Some(pl) = self.progress_listener.as_ref() {
-                if let Ok(mut f) = pl.lock() {
-                    f(self.name.clone(), self.part, self.cursor, total_len);
+                if let (Ok(mut f), Ok(name)) = (pl.lock(), self.name.lock()) {
+                    f(name.to_owned(), self.part, self.cursor, total_len);
                 }
             }
 

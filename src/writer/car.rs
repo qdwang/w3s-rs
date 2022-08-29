@@ -36,7 +36,7 @@ pub struct Car<W: io::Write> {
     next_writer: W,
 }
 
-pub fn SingleFileToDirectoryItem(name: &str, path: Option<&str>) -> DirectoryItem {
+pub fn single_file_to_directory_item(name: &str, path: Option<&str>) -> DirectoryItem {
     DirectoryItem::File(name.to_owned(), path.unwrap_or(name).to_owned(), 0)
 }
 
@@ -119,14 +119,15 @@ impl<W: io::Write> io::Write for Car<W> {
         self.next_mut().flush()?;
 
         if self.files_count == self.id_map.len() {
-            let mut unixfs_structs: Vec<_> = self
+            let mut blocks = vec![];
+            let root_blocks: Vec<_> = self
                 .dir_items
                 .iter()
-                .map(|item| item.to_unixfs_struct(&self.id_map))
+                .map(|item| item.to_unixfs_struct(&self.id_map, &mut blocks))
                 .collect();
 
-            let root = gen_dir(None, &unixfs_structs);
-            let car = gen_car(&mut unixfs_structs, Some(root))
+            let root = gen_dir(None, &root_blocks);
+            let car = gen_car(&mut blocks, Some(root))
                 .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, e))?;
 
             self.next_mut().write(&car)?;

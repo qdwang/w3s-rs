@@ -32,6 +32,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
     let uploader = uploader::Uploader::new(
         auth_token.clone(),
         filename.clone(),
+        None,
         uploader::UploadType::Car,
         2,
         Some(Arc::new(Mutex::new(|name, part, pos, total| {
@@ -41,7 +42,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
 
     let mut car = car::Car::new(
         1,
-        Rc::new(vec![car::SingleFileToDirectoryItem(&filename, None)]),
+        Rc::new(vec![car::single_file_to_directory_item(&filename, None)]),
         None,
         None,
         uploader,

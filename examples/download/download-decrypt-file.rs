@@ -33,7 +33,7 @@ async fn download(url: &String, path: &String) -> Result<()> {
         cipher,
     );
     downloader
-        .download(Arc::new(path.clone()), url.as_str(), None)
+        .download(path.clone(), url.as_str(), None)
         .await?;
 
     println!("file downloaded to path:{path}");

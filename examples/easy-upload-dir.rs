@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
 async fn upload(path: &String, auth_token: &String) -> Result<()> {
     let results = helper::upload_dir(
         path,
+        None,
         auth_token.to_owned(),
         1,
         Some(Arc::new(Mutex::new(|name, part, pos, total| {
