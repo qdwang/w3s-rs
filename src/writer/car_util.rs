@@ -1,5 +1,7 @@
 use super::super::iroh_car;
+use super::dir::Dir;
 use super::*;
+use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::{borrow::Cow, collections::HashMap, mem};
@@ -105,7 +107,7 @@ impl DirectoryItem {
                 gen_dir(Some(name.clone()), &items)
             }
         };
-        
+
         collect_blocks.push(block.clone());
         block
     }
@@ -125,6 +127,17 @@ impl UnixFsStruct {
             Hash: Some(self.cid.to_bytes().into()),
             Tsize: Some(self.size),
         }
+    }
+}
+impl Display for UnixFsStruct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "cid: {} size: {} | {}",
+            self.cid,
+            self.size,
+            self.name.as_ref().unwrap_or(&"".to_owned())
+        )
     }
 }
 
@@ -228,12 +241,11 @@ pub fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
     let digest = Blake2b256.digest(&node_bytes);
     let cid = Cid::new_v1(DagPbCodec.into(), digest);
 
-    let size = dir_size + node_bytes.len() as u64;
     UnixFsStruct {
         name,
         cid,
         data: node_bytes,
-        size,
+        size: dir_size,
     }
 }
 
@@ -267,11 +279,10 @@ pub fn gen_pbnode_from_blocks(name: String, blocks: &[UnixFsStruct]) -> UnixFsSt
 
     let digest = Blake2b256.digest(&node_bytes);
     let cid = Cid::new_v1(DagPbCodec.into(), digest);
-    let size = node_bytes.len() as u64 + filesize;
     UnixFsStruct {
         name: Some(name),
         cid,
         data: node_bytes,
-        size,
+        size: filesize,
     }
 }

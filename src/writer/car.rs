@@ -48,7 +48,7 @@ impl<W: io::Write> Car<W> {
         custom_block_size: Option<usize>,
         next_writer: W,
     ) -> Car<W> {
-        let block_size = custom_block_size.unwrap_or(1024 * 1024);
+        let block_size = custom_block_size.unwrap_or(256 * 1024);
         let remote_file_id = remote_file_id.unwrap_or(Rc::new(RefCell::new(0)));
 
         Car {
