@@ -1,4 +1,5 @@
 use aead::generic_array::GenericArray;
+use argon2::password_hash::Output;
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::XChaCha20;
@@ -45,6 +46,7 @@ impl From<Error> for io::Error {
 pub struct Cipher<W: io::Write> {
     cipher: XChaCha20,
     mac: Poly1305,
+    kept_key: Output,
     decryption: Option<Vec<u8>>, // Some(password)
     is_prefix_written: bool,
     remnant2mac: Vec<u8>,
@@ -58,11 +60,12 @@ impl<W: io::Write> Cipher<W> {
     pub fn new_decryption(pwd: Vec<u8>, next_writer: W) -> Result<Cipher<W>, Error> {
         let salt = [0u8; SALT_SIZE];
         let nonce = [0u8; NONCE_SIZE];
-        let (cipher, mac) = Self::gen_cipher_and_mac(&mut [], &salt, &nonce)?;
+        let (cipher, mac, kept_key) = Self::gen_cipher_and_mac(&mut [], &salt, &nonce)?;
 
         Ok(Cipher {
             cipher,
             mac,
+            kept_key,
             decryption: Some(pwd),
             is_prefix_written: false,
             remnant2mac: vec![],
@@ -80,11 +83,12 @@ impl<W: io::Write> Cipher<W> {
         rng.fill_bytes(&mut salt);
         rng.fill_bytes(&mut nonce);
 
-        let (cipher, mac) = Self::gen_cipher_and_mac(pwd, &salt, &nonce)?;
+        let (cipher, mac, kept_key) = Self::gen_cipher_and_mac(pwd, &salt, &nonce)?;
 
         Ok(Cipher {
             cipher,
             mac,
+            kept_key,
             decryption: None,
             is_prefix_written: false,
             remnant2mac: vec![],
@@ -95,21 +99,20 @@ impl<W: io::Write> Cipher<W> {
         })
     }
 
-    fn gen_cipher_and_mac(
-        pwd: &mut [u8],
-        salt: &[u8],
+    fn reset(&mut self) {
+        let (cipher, mac, _) = Self::gen_cipher_and_mac_with_hashed_pwd(self.kept_key, &self.nonce);
+
+        self.mac = mac;
+        self.cipher = cipher;
+        self.is_prefix_written = false;
+        self.remnant2mac = vec![];
+        self.content_len = 0;
+    }
+
+    fn gen_cipher_and_mac_with_hashed_pwd(
+        hashed_pwd: Output,
         nonce: &[u8],
-    ) -> Result<(XChaCha20, Poly1305), Error> {
-        let salt_string = SaltString::b64_encode(salt).map_err(|e| Error::PasswordHashError(e))?;
-
-        let hashed_pwd = Argon2::default()
-            .hash_password(&pwd, &salt_string)
-            .map_err(|e| Error::PasswordHashError(e))?
-            .hash
-            .ok_or(Error::HashResultError)?;
-
-        pwd.zeroize();
-
+    ) -> (XChaCha20, Poly1305, Output) {
         let mut cipher = XChaCha20::new(hashed_pwd.as_bytes().into(), nonce.into());
 
         // init for mac
@@ -121,7 +124,25 @@ impl<W: io::Write> Cipher<W> {
 
         cipher.seek(BLOCK_SIZE);
 
-        Ok((cipher, mac))
+        (cipher, mac, hashed_pwd)
+    }
+
+    fn gen_cipher_and_mac(
+        pwd: &mut [u8],
+        salt: &[u8],
+        nonce: &[u8],
+    ) -> Result<(XChaCha20, Poly1305, Output), Error> {
+        let salt_string = SaltString::b64_encode(salt).map_err(|e| Error::PasswordHashError(e))?;
+
+        let hashed_pwd = Argon2::default()
+            .hash_password(&pwd, &salt_string)
+            .map_err(|e| Error::PasswordHashError(e))?
+            .hash
+            .ok_or(Error::HashResultError)?;
+
+        pwd.zeroize();
+
+        Ok(Self::gen_cipher_and_mac_with_hashed_pwd(hashed_pwd, nonce))
     }
 
     fn update_mac(&mut self, buf: &[u8], keep_remnant: bool) {
@@ -187,7 +208,7 @@ impl<W: io::Write> io::Write for Cipher<W> {
                 let nonce = buf
                     .get(SALT_SIZE..SALT_SIZE + NONCE_SIZE)
                     .ok_or(Error::TooShortForNonce)?;
-                let (cipher, mac) = Self::gen_cipher_and_mac(pwd, salt, nonce)?;
+                let (cipher, mac, _) = Self::gen_cipher_and_mac(pwd, salt, nonce)?;
                 pwd.clear();
 
                 self.cipher = cipher;
@@ -251,6 +272,8 @@ impl<W: io::Write> io::Write for Cipher<W> {
         }
 
         self.next_mut().flush()?;
+
+        self.reset();
 
         Ok(())
     }

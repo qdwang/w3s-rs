@@ -25,14 +25,18 @@ impl<W: io::Write> Dir<W> {
         }
     }
 
+    fn refresh_name(&mut self, name: &str) {
+        if let Ok(mut mutex_name) = self.curr_name.lock() {
+            *mutex_name = name.to_owned();
+        }
+    }
+
     pub fn walk_write(&mut self, dir_items: &[DirectoryItem]) -> io::Result<()> {
         for item in dir_items {
             match item {
                 DirectoryItem::File(name, path, id) => {
-                    if let Ok(mut mutex_name) = self.curr_name.lock() {
-                        *mutex_name = name.to_owned();
-                    }
-                    
+                    self.refresh_name(name);
+
                     *self.curr_file_id.borrow_mut() = *id;
                     let mut file = File::open(path)?;
                     io::copy(&mut file, &mut self.next_writer)?;
@@ -40,6 +44,36 @@ impl<W: io::Write> Dir<W> {
                 }
                 DirectoryItem::Directory(_, sub_dir_items) => {
                     self.walk_write(sub_dir_items)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "zstd")]
+    pub fn walk_write_with_compression(
+        &mut self,
+        dir_items: &[DirectoryItem],
+        level: Option<i32>,
+    ) -> io::Result<()> {
+        for item in dir_items {
+            match item {
+                DirectoryItem::File(name, path, id) => {
+                    self.refresh_name(name);
+
+                    *self.curr_file_id.borrow_mut() = *id;
+                    let mut file = File::open(path)?;
+
+                    let mut compressor =
+                        zstd::stream::Encoder::new(&mut self.next_writer, level.unwrap_or(10))?;
+                    io::copy(&mut file, &mut compressor)?;
+                    
+                    compressor.finish()?;
+                    self.next_writer.flush()?;
+                }
+                DirectoryItem::Directory(_, sub_dir_items) => {
+                    self.walk_write_with_compression(sub_dir_items, level)?;
                 }
             }
         }

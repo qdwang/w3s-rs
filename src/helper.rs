@@ -67,6 +67,33 @@ fn gen_single_file_uploader(
 }
 
 #[cfg(all(feature = "zstd", feature = "encryption"))]
+async fn upload_dir_compress_then_encrypt(
+    name: Arc<Mutex<String>>,
+    curr_file_id: Rc<RefCell<u64>>,
+    dir_items: &[DirectoryItem],
+    car: car::Car<uploader::Uploader>,
+    level: Option<i32>,
+    password: &mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    let cipher = cipher::Cipher::new(password, car)?;
+    let mut dir = dir::Dir::new(name, curr_file_id, cipher);
+    dir.walk_write_with_compression(&dir_items, level)?;
+    let result = dir.next().next().next().finish_results().await?;
+    Ok(result)
+}
+#[cfg(not(all(feature = "zstd", feature = "encryption")))]
+async fn upload_dir_compress_then_encrypt(
+    _: Arc<Mutex<String>>,
+    _: Rc<RefCell<u64>>,
+    _: &[DirectoryItem],
+    _: car::Car<uploader::Uploader>,
+    _: Option<i32>,
+    _: &mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    Err(Error::FeatureNoCipherAndZstd)
+}
+
+#[cfg(all(feature = "zstd", feature = "encryption"))]
 async fn compress_then_encrypt<'a>(
     reader: &'a mut impl io::Read,
     writer: Box<dyn ChainWrite<uploader::Uploader>>,
@@ -92,6 +119,30 @@ async fn compress_then_encrypt<'a>(
 }
 
 #[cfg(feature = "zstd")]
+async fn upload_dir_compress(
+    name: Arc<Mutex<String>>,
+    curr_file_id: Rc<RefCell<u64>>,
+    dir_items: &[DirectoryItem],
+    car: car::Car<uploader::Uploader>,
+    level: Option<i32>,
+) -> Result<Vec<Cid>, Error> {
+    let mut dir = dir::Dir::new(name, curr_file_id, car);
+    dir.walk_write_with_compression(&dir_items, level)?;
+    let result = dir.next().next().finish_results().await?;
+    Ok(result)
+}
+#[cfg(not(feature = "zstd"))]
+async fn upload_dir_compress(
+    _: Arc<Mutex<String>>,
+    _: Rc<RefCell<u64>>,
+    _: &[DirectoryItem],
+    _: car::Car<uploader::Uploader>,
+    _: Option<i32>,
+) -> Result<Vec<Cid>, Error> {
+    Err(Error::FeatureNoZstd)
+}
+
+#[cfg(feature = "zstd")]
 async fn compress(
     reader: &mut impl io::Read,
     writer: Box<dyn ChainWrite<uploader::Uploader>>,
@@ -111,6 +162,30 @@ async fn compress(
     _: Option<i32>,
 ) -> Result<Vec<Cid>, Error> {
     Err(Error::FeatureNoZstd)
+}
+#[cfg(feature = "encryption")]
+async fn upload_dir_encrypt(
+    name: Arc<Mutex<String>>,
+    curr_file_id: Rc<RefCell<u64>>,
+    dir_items: &[DirectoryItem],
+    car: car::Car<uploader::Uploader>,
+    password: &mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    let cipher = cipher::Cipher::new(password, car)?;
+    let mut dir = dir::Dir::new(name, curr_file_id, cipher);
+    dir.walk_write(&dir_items)?;
+    let result = dir.next().next().next().finish_results().await?;
+    Ok(result)
+}
+#[cfg(not(feature = "encryption"))]
+async fn upload_dir_encrypt(
+    _: Arc<Mutex<String>>,
+    _: Rc<RefCell<u64>>,
+    _: &[DirectoryItem],
+    _: car::Car<uploader::Uploader>,
+    _: &mut [u8],
+) -> Result<Vec<Cid>, Error> {
+    Err(Error::FeatureNoCipher)
 }
 
 #[cfg(feature = "encryption")]
@@ -165,11 +240,31 @@ pub async fn upload_dir(
         None,
         uploader,
     );
-    let mut dir = dir::Dir::new(name, curr_file_id, car);
 
-    dir.walk_write(&dir_items_rc)?;
-
-    let results = dir.next().next().finish_results().await?;
+    let results = match (with_compression, with_encryption) {
+        (Some(level), Some(password)) => {
+            upload_dir_compress_then_encrypt(
+                name,
+                curr_file_id,
+                &dir_items_rc,
+                car,
+                level,
+                password,
+            )
+            .await?
+        }
+        (Some(level), None) => {
+            upload_dir_compress(name, curr_file_id, &dir_items_rc, car, level).await?
+        }
+        (None, Some(password)) => {
+            upload_dir_encrypt(name, curr_file_id, &dir_items_rc, car, password).await?
+        }
+        _ => {
+            let mut dir = dir::Dir::new(name, curr_file_id, car);
+            dir.walk_write(&dir_items_rc)?;
+            dir.next().next().finish_results().await?
+        }
+    };
 
     Ok(results)
 }
