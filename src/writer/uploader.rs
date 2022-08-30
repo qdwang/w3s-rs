@@ -44,7 +44,7 @@ impl fmt::Display for UploadType {
 }
 
 pub type ProgressListener =
-    Arc<Mutex<dyn FnMut(String, usize, usize, usize) + Send + Sync + 'static>>;
+    Arc<Mutex<dyn FnMut(Arc<String>, usize, usize, usize) + Send + Sync + 'static>>;
 pub struct Uploader {
     upload_type: UploadType,
     auth_token: Arc<String>,
@@ -125,7 +125,7 @@ impl Uploader {
 
         let upload_fn = || {
             let body = Body::wrap_stream(ProgressStream {
-                name: sync_file_name.clone(),
+                name: Arc::new(sync_file_name.lock().unwrap().clone()),
                 part,
                 data: data.clone(),
                 cursor: 0,
@@ -193,7 +193,7 @@ struct Response {
 
 #[derive(Clone)]
 pub struct ProgressStream {
-    name: Arc<Mutex<String>>,
+    name: Arc<String>,
     part: usize,
     data: Arc<Vec<u8>>,
     cursor: usize,
@@ -218,8 +218,8 @@ impl futures::Stream for ProgressStream {
             result.copy_from_slice(&self.data[start_index..self.cursor]);
 
             if let Some(pl) = self.progress_listener.as_ref() {
-                if let (Ok(mut f), Ok(name)) = (pl.lock(), self.name.lock()) {
-                    f(name.to_owned(), self.part, self.cursor, total_len);
+                if let Ok(mut f) = pl.lock() {
+                    f(self.name.clone(), self.part, self.cursor, total_len);
                 }
             }
 

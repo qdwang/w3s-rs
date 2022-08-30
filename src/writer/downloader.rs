@@ -81,8 +81,8 @@ impl<W: io::Write> Downloader<W> {
         }
         .map(|v| v as usize)
         .unwrap_or(0);
-        // .ok_or_else(|| Error::NoContentLength(url.to_owned()))?;
 
+        let arc_name = Arc::new(name);
         if total_len == 0 || begin_offset != total_len {
             let mut written_len = begin_offset;
             while let Ok(Some(chunk)) = resp.chunk().await {
@@ -91,7 +91,7 @@ impl<W: io::Write> Downloader<W> {
 
                 if let Some(pl) = self.progress_listener.as_ref() {
                     if let Ok(mut f) = pl.lock() {
-                        f(name.clone(), 0, written_len, total_len);
+                        f(arc_name.clone(), 0, written_len, total_len);
                     }
                 }
             }
