@@ -7,27 +7,15 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub struct Dir<W: io::Write> {
-    curr_name: Arc<Mutex<String>>,
     curr_file_id: Rc<RefCell<u64>>,
     next_writer: W,
 }
 
 impl<W: io::Write> Dir<W> {
-    pub fn new(
-        curr_name: Arc<Mutex<String>>,
-        curr_file_id: Rc<RefCell<u64>>,
-        next_writer: W,
-    ) -> Self {
+    pub fn new(curr_file_id: Rc<RefCell<u64>>, next_writer: W) -> Self {
         Dir {
-            curr_name,
             curr_file_id,
             next_writer,
-        }
-    }
-
-    fn refresh_name(&mut self, name: &str) {
-        if let Ok(mut mutex_name) = self.curr_name.lock() {
-            *mutex_name = name.to_owned();
         }
     }
 
@@ -35,8 +23,6 @@ impl<W: io::Write> Dir<W> {
         for item in dir_items {
             match item {
                 DirectoryItem::File(name, path, id) => {
-                    self.refresh_name(name);
-
                     *self.curr_file_id.borrow_mut() = *id;
                     let mut file = File::open(path)?;
                     io::copy(&mut file, &mut self.next_writer)?;
@@ -60,15 +46,13 @@ impl<W: io::Write> Dir<W> {
         for item in dir_items {
             match item {
                 DirectoryItem::File(name, path, id) => {
-                    self.refresh_name(name);
-
                     *self.curr_file_id.borrow_mut() = *id;
                     let mut file = File::open(path)?;
 
                     let mut compressor =
                         zstd::stream::Encoder::new(&mut self.next_writer, level.unwrap_or(10))?;
                     io::copy(&mut file, &mut compressor)?;
-                    
+
                     compressor.finish()?;
                     self.next_writer.flush()?;
                 }

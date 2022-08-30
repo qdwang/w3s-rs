@@ -28,7 +28,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
         path,
         None,
         auth_token.to_owned(),
-        2,
+        1,
         Some(Arc::new(Mutex::new(|name, part, pos, total| {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),

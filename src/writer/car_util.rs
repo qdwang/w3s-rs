@@ -121,6 +121,10 @@ pub struct UnixFsStruct {
     size: u64,
 }
 impl UnixFsStruct {
+    pub fn rip_data_with_cid(&mut self) -> (Cid, Vec<u8>) {
+        (self.cid.clone(), mem::replace(&mut self.data, vec![]))
+    }
+
     pub fn to_link(&self) -> PBLink {
         PBLink {
             Name: None,
@@ -169,6 +173,25 @@ fn empty_item() -> UnixFsStruct {
         data: node_bytes,
         size: 0,
     }
+}
+
+pub fn gen_car_by_data(
+    blocks: Vec<(Cid, Vec<u8>)>,
+    root_struct: Option<UnixFsStruct>,
+) -> Result<Vec<u8>, iroh_car::Error> {
+    let root = root_struct.unwrap_or(empty_item());
+    let header = CarHeader::new(vec![root.cid]);
+
+    let mut buffer = Vec::with_capacity(MAX_CAR_SIZE);
+    let mut writer = CarWriter::new(header, &mut buffer);
+
+    for (cid, data) in blocks {
+        writer.write(cid, data)?;
+    }
+    writer.write(root.cid, root.data)?;
+    writer.flush()?;
+
+    Ok(buffer)
 }
 
 pub fn gen_car(

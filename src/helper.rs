@@ -68,7 +68,6 @@ fn gen_single_file_uploader(
 
 #[cfg(all(feature = "zstd", feature = "encryption"))]
 async fn upload_dir_compress_then_encrypt(
-    name: Arc<Mutex<String>>,
     curr_file_id: Rc<RefCell<u64>>,
     dir_items: &[DirectoryItem],
     car: car::Car<uploader::Uploader>,
@@ -76,14 +75,13 @@ async fn upload_dir_compress_then_encrypt(
     password: &mut [u8],
 ) -> Result<Vec<Cid>, Error> {
     let cipher = cipher::Cipher::new(password, car)?;
-    let mut dir = dir::Dir::new(name, curr_file_id, cipher);
+    let mut dir = dir::Dir::new(curr_file_id, cipher);
     dir.walk_write_with_compression(&dir_items, level)?;
     let result = dir.next().next().next().finish_results().await?;
     Ok(result)
 }
 #[cfg(not(all(feature = "zstd", feature = "encryption")))]
 async fn upload_dir_compress_then_encrypt(
-    _: Arc<Mutex<String>>,
     _: Rc<RefCell<u64>>,
     _: &[DirectoryItem],
     _: car::Car<uploader::Uploader>,
@@ -126,7 +124,7 @@ async fn upload_dir_compress(
     car: car::Car<uploader::Uploader>,
     level: Option<i32>,
 ) -> Result<Vec<Cid>, Error> {
-    let mut dir = dir::Dir::new(name, curr_file_id, car);
+    let mut dir = dir::Dir::new(curr_file_id, car);
     dir.walk_write_with_compression(&dir_items, level)?;
     let result = dir.next().next().finish_results().await?;
     Ok(result)
@@ -172,7 +170,7 @@ async fn upload_dir_encrypt(
     password: &mut [u8],
 ) -> Result<Vec<Cid>, Error> {
     let cipher = cipher::Cipher::new(password, car)?;
-    let mut dir = dir::Dir::new(name, curr_file_id, cipher);
+    let mut dir = dir::Dir::new(curr_file_id, cipher);
     dir.walk_write(&dir_items)?;
     let result = dir.next().next().next().finish_results().await?;
     Ok(result)
@@ -243,15 +241,8 @@ pub async fn upload_dir(
 
     let results = match (with_compression, with_encryption) {
         (Some(level), Some(password)) => {
-            upload_dir_compress_then_encrypt(
-                name,
-                curr_file_id,
-                &dir_items_rc,
-                car,
-                level,
-                password,
-            )
-            .await?
+            upload_dir_compress_then_encrypt(curr_file_id, &dir_items_rc, car, level, password)
+                .await?
         }
         (Some(level), None) => {
             upload_dir_compress(name, curr_file_id, &dir_items_rc, car, level).await?
@@ -260,7 +251,7 @@ pub async fn upload_dir(
             upload_dir_encrypt(name, curr_file_id, &dir_items_rc, car, password).await?
         }
         _ => {
-            let mut dir = dir::Dir::new(name, curr_file_id, car);
+            let mut dir = dir::Dir::new(curr_file_id, car);
             dir.walk_write(&dir_items_rc)?;
             dir.next().next().finish_results().await?
         }

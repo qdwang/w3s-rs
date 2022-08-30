@@ -115,7 +115,6 @@ impl Uploader {
     pub async fn upload(
         upload_type: UploadType,
         w3s_name: Arc<String>,
-        sync_file_name: Arc<Mutex<String>>,
         part: usize,
         auth_token: Arc<String>,
         data: Arc<Vec<u8>>,
@@ -125,7 +124,7 @@ impl Uploader {
 
         let upload_fn = || {
             let body = Body::wrap_stream(ProgressStream {
-                name: Arc::new(sync_file_name.lock().unwrap().clone()),
+                name: w3s_name.clone(),
                 part,
                 data: data.clone(),
                 cursor: 0,
@@ -159,7 +158,6 @@ impl io::Write for Uploader {
         let upload_future = Uploader::upload(
             self.upload_type,
             self.w3s_name.clone(),
-            self.sync_file_name.clone(),
             self.tasks.len() + self.results.len(),
             self.auth_token.clone(),
             Arc::new(buf.to_vec()),

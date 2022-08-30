@@ -32,6 +32,7 @@ pub struct Car<W: io::Write> {
     id_map: HashMap<u64, Vec<UnixFsStruct>>,
     dir_items: Rc<Vec<DirectoryItem>>,
     buf: Vec<u8>,
+    blocks: Vec<(Cid, Vec<u8>)>,
     block_size: usize,
     next_writer: W,
 }
@@ -57,6 +58,7 @@ impl<W: io::Write> Car<W> {
             remote_file_id,
             id_map: HashMap::new(),
             buf: Vec::with_capacity(block_size + block_size / 10),
+            blocks: vec![],
             block_size,
             next_writer,
         }
@@ -65,7 +67,9 @@ impl<W: io::Write> Car<W> {
     fn gen_car_from_buf(&mut self, buf: Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
         let remote_id = *self.remote_file_id.borrow();
         let mut blocks = gen_blocks(buf, self.block_size);
-        let car = gen_car(&mut blocks, None)?;
+
+        self.blocks
+            .extend(blocks.iter_mut().map(|x| x.rip_data_with_cid()));
 
         // insert blocks into id_map
         if let Some(struct_lst) = self.id_map.get_mut(&remote_id) {
@@ -74,7 +78,15 @@ impl<W: io::Write> Car<W> {
             self.id_map.insert(remote_id, blocks);
         }
 
-        Ok(Some(car))
+        if self.blocks.len() >= car_util::MAX_CAR_SIZE / self.block_size {
+            let mut blocks = mem::replace(&mut self.blocks, vec![]);
+            let remain_blocks = blocks.split_off(car_util::MAX_CAR_SIZE / self.block_size);
+            let car = gen_car_by_data(blocks, None)?;
+            self.blocks = remain_blocks;
+            Ok(Some(car))
+        } else {
+            Ok(None)
+        }
     }
     fn buf_extend(&mut self, buf: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         self.buf.extend(buf);
@@ -115,11 +127,13 @@ impl<W: io::Write> io::Write for Car<W> {
             let remain_buf = mem::replace(&mut self.buf, vec![]);
             let car_data = self.gen_car_from_buf(remain_buf)?;
             if let Some(car) = car_data {
-                self.next_mut().write(&car)?;
+                if self.next_mut().write(&car)? == 0 {
+                    self.next_mut().flush()?;
+                }
             }
-            self.next_mut().flush()?;
         }
 
+        // final flush
         if self.files_count == self.id_map.len() {
             let mut blocks = vec![];
             let root_blocks: Vec<_> = self
@@ -129,7 +143,11 @@ impl<W: io::Write> io::Write for Car<W> {
                 .collect();
 
             let root = gen_dir(None, &root_blocks);
-            let car = gen_car(&mut blocks, Some(root))
+            
+            self.blocks.extend(blocks.iter_mut().map(|x| x.rip_data_with_cid()));
+            let blocks = mem::replace(&mut self.blocks, vec![]);
+
+            let car = gen_car_by_data(blocks, Some(root))
                 .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, e))?;
 
             self.next_mut().write(&car)?;
