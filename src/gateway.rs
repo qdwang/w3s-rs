@@ -1,12 +1,61 @@
 //! IPFS gateway utilities
-//! 
+//!
 
-use reqwest::Client;
 use futures::{future, future::select_all, FutureExt, TryFutureExt};
+use reqwest::Client;
 use std::time::{Duration, Instant};
 
+pub async fn check_gateways_by_cid(
+    cid: &str,
+    custom_timeout_secs: Option<u64>,
+    proxy: Option<&str>,
+) -> Vec<(String, f32)> {
+    let mut futures = GATEWAYS
+        .iter()
+        .enumerate()
+        .map(|(index, gateway)| {
+            let client = if let Some(proxy) = proxy {
+                Client::builder()
+                    .proxy(reqwest::Proxy::https(proxy).unwrap())
+                    .timeout(Duration::from_secs(custom_timeout_secs.unwrap_or(3)))
+                    .build()
+                    .unwrap_or(Client::new())
+            } else {
+                Client::builder()
+                    .timeout(Duration::from_secs(custom_timeout_secs.unwrap_or(3)))
+                    .build()
+                    .unwrap_or(Client::new())
+            };
+
+            let t = Instant::now();
+
+            client
+                .head(format!("{}{}", gateway, cid))
+                .send()
+                .and_then(move |resp| future::ok((index, resp.status(), t)))
+                .map_err(move |_| index)
+                .boxed()
+        })
+        .collect::<Vec<_>>();
+
+    let mut ret = vec![];
+    while futures.len() > 0 {
+        let (result, _, remaining_futures) = select_all(futures).await;
+        futures = remaining_futures;
+
+        if let Ok((index, status, t)) = result {
+            if status.as_u16() == 200 {
+                let gateway = GATEWAYS[index];
+                let delta_t = Instant::now() - t;
+                ret.push((format!("{}{}", gateway, cid), delta_t.as_secs_f32()));
+            }
+        }
+    }
+
+    ret
+}
 /// Checks all the public gateways and returns the available ones with response time.
-/// 
+///
 /// This function is inspired from [public-gateway-checker](https://ipfs.github.io/public-gateway-checker/).
 /// * `custom_timeout_secs`: Specify the custom timeout seconds for a check. The default timeout seconds is 3 seconds.
 pub async fn check_gateways(custom_timeout_secs: Option<u64>) -> Vec<(&'static str, f32)> {
@@ -48,14 +97,14 @@ pub async fn check_gateways(custom_timeout_secs: Option<u64>) -> Vec<(&'static s
 }
 
 /// The gateway data source: [gateways.json](https://github.com/ipfs/public-gateway-checker/blob/master/src/gateways.json)
-static GATEWAYS: [&str; 95] = [
+static GATEWAYS: [&str; 92] = [
+    "https://w3s.link/ipfs/",
     "https://ipfs.io/ipfs/",
     "https://dweb.link/ipfs/",
     "https://gateway.ipfs.io/ipfs/",
     "https://ipfs.infura.io/ipfs/",
     "https://infura-ipfs.io/ipfs/",
     "https://ninetailed.ninja/ipfs/",
-    "https://via0.com/ipfs/",
     "https://ipfs.eternum.io/ipfs/",
     "https://hardbin.com/ipfs/",
     "https://gateway.blocksec.com/ipfs/",
@@ -72,13 +121,11 @@ static GATEWAYS: [&str; 95] = [
     "https://ipfs.greyh.at/ipfs/",
     "https://gateway.serph.network/ipfs/",
     "https://jorropo.net/ipfs/",
-    "https://ipfs.fooock.com/ipfs/",
     "https://cdn.cwinfo.net/ipfs/",
     "https://aragon.ventures/ipfs/",
     "https://ipfs-cdn.aragon.ventures/ipfs/",
     "https://permaweb.io/ipfs/",
     "https://ipfs.best-practice.se/ipfs/",
-    "https://storjipfs-gateway.com/ipfs/",
     "https://ipfs.runfission.com/ipfs/",
     "https://ipfs.trusti.id/ipfs/",
     "https://ipfs.overpi.com/ipfs/",
@@ -86,7 +133,6 @@ static GATEWAYS: [&str; 95] = [
     "https://ipfs.ink/ipfs/",
     "https://ipfsgateway.makersplace.com/ipfs/",
     "https://gateway.ravenland.org/ipfs/",
-    "https://ipfs.funnychain.co/ipfs/",
     "https://ipfs.telos.miami/ipfs/",
     "https://ipfs.mttk.net/ipfs/",
     "https://ipfs.fleek.co/ipfs/",
@@ -146,7 +192,6 @@ static GATEWAYS: [&str; 95] = [
     "https://ipfs.litnet.work/ipfs/",
 ];
 
-const GATEWAY_CHECKER_CID: &str =
-    "bafybeifx7yeb55armcsxwwitkymga5xf53dxiarykms3ygqic223w5sk3m";
+const GATEWAY_CHECKER_CID: &str = "bafybeifx7yeb55armcsxwwitkymga5xf53dxiarykms3ygqic223w5sk3m";
 
 const GATEWAY_CHECK_WORDS: &str = "Hello from IPFS Gateway Checker";
