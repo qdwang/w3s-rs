@@ -19,12 +19,12 @@ pub async fn check_gateways_by_cid(
                     .proxy(reqwest::Proxy::https(proxy).unwrap())
                     .timeout(Duration::from_secs(custom_timeout_secs.unwrap_or(3)))
                     .build()
-                    .unwrap_or(Client::new())
+                    .unwrap_or_default()
             } else {
                 Client::builder()
                     .timeout(Duration::from_secs(custom_timeout_secs.unwrap_or(3)))
                     .build()
-                    .unwrap_or(Client::new())
+                    .unwrap_or_default()
             };
 
             let t = Instant::now();
@@ -39,7 +39,7 @@ pub async fn check_gateways_by_cid(
         .collect::<Vec<_>>();
 
     let mut ret = vec![];
-    while futures.len() > 0 {
+    while !futures.is_empty() {
         let (result, _, remaining_futures) = select_all(futures).await;
         futures = remaining_futures;
 
@@ -66,7 +66,7 @@ pub async fn check_gateways(custom_timeout_secs: Option<u64>) -> Vec<(&'static s
             let client = Client::builder()
                 .timeout(Duration::from_secs(custom_timeout_secs.unwrap_or(3)))
                 .build()
-                .unwrap_or(Client::new());
+                .unwrap_or_default();
 
             let t = Instant::now();
 
@@ -80,7 +80,7 @@ pub async fn check_gateways(custom_timeout_secs: Option<u64>) -> Vec<(&'static s
         .collect::<Vec<_>>();
 
     let mut ret = vec![];
-    while futures.len() > 0 {
+    while !futures.is_empty() {
         let (result, _, remaining_futures) = select_all(futures).await;
         futures = remaining_futures;
 

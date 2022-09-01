@@ -2,17 +2,11 @@ use super::super::iroh_car;
 use super::*;
 use car_util::*;
 use std::cell::RefCell;
-use std::fs;
 use std::rc::Rc;
-use std::{borrow::Cow, collections::HashMap, io, mem};
+use std::{collections::HashMap, io, mem};
 
 use cid::Cid;
-use ipld_pb::DagPbCodec;
-use iroh_car::CarHeader;
-use iroh_car::*;
-use multihash::{Code::Blake2b256, MultihashDigest};
 use thiserror::Error;
-use unixfs_v1::{PBLink, PBNode, UnixFs, UnixFsType};
 
 #[derive(Error, Debug)]
 enum Error {
@@ -50,7 +44,7 @@ impl<W: io::Write> Car<W> {
         next_writer: W,
     ) -> Car<W> {
         let block_size = custom_block_size.unwrap_or(256 * 1024);
-        let remote_file_id = remote_file_id.unwrap_or(Rc::new(RefCell::new(0)));
+        let remote_file_id = remote_file_id.unwrap_or_else(|| Rc::new(RefCell::new(0)));
 
         Car {
             files_count,
@@ -79,7 +73,7 @@ impl<W: io::Write> Car<W> {
         }
 
         if self.blocks.len() >= car_util::MAX_CAR_SIZE / self.block_size {
-            let mut blocks = mem::replace(&mut self.blocks, vec![]);
+            let mut blocks = mem::take(&mut self.blocks);
             let remain_blocks = blocks.split_off(car_util::MAX_CAR_SIZE / self.block_size);
             let car = gen_car_by_data(blocks, None)?;
             self.blocks = remain_blocks;
@@ -92,7 +86,7 @@ impl<W: io::Write> Car<W> {
         self.buf.extend(buf);
 
         let prepared_buf = if self.buf.len() >= MAX_CAR_SIZE {
-            Some(mem::replace(&mut self.buf, vec![]))
+            Some(mem::take(&mut self.buf))
         } else {
             None
         };
@@ -123,8 +117,8 @@ impl<W: io::Write> io::Write for Car<W> {
         Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
-        if self.buf.len() > 0 {
-            let remain_buf = mem::replace(&mut self.buf, vec![]);
+        if !self.buf.is_empty() {
+            let remain_buf = mem::take(&mut self.buf);
             let car_data = self.gen_car_from_buf(remain_buf)?;
             if let Some(car) = car_data {
                 if self.next_mut().write(&car)? == 0 {
@@ -143,14 +137,14 @@ impl<W: io::Write> io::Write for Car<W> {
                 .collect();
 
             let root = gen_dir(None, &root_blocks);
-            
-            self.blocks.extend(blocks.iter_mut().map(|x| x.rip_data_with_cid()));
-            let blocks = mem::replace(&mut self.blocks, vec![]);
 
-            let car = gen_car_by_data(blocks, Some(root))
+            self.blocks
+                .extend(blocks.iter_mut().map(|x| x.rip_data_with_cid()));
+
+            let car = gen_car_by_data(mem::take(&mut self.blocks), Some(root))
                 .map_err(|e| io::Error::new(io::ErrorKind::Interrupted, e))?;
 
-            self.next_mut().write(&car)?;
+            let _ = self.next_mut().write(&car)?;
             self.next_mut().flush()?;
         }
 

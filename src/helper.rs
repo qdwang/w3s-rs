@@ -5,10 +5,9 @@ use crate::writer::car_util::DirectoryItem;
 
 use super::writer::*;
 use std::cell::RefCell;
+use std::fs::File;
 use std::io::{self, Write};
-
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -41,7 +40,6 @@ fn gen_single_file_uploader(
     let uploader = uploader::Uploader::new(
         auth_token.as_ref().to_owned(),
         name.as_ref().to_owned(),
-        None,
         if with_car.is_some() {
             uploader::UploadType::Car
         } else {
@@ -76,7 +74,7 @@ async fn upload_dir_compress_then_encrypt(
 ) -> Result<Vec<Cid>, Error> {
     let cipher = cipher::Cipher::new(password, car)?;
     let mut dir = dir::Dir::new(curr_file_id, cipher);
-    dir.walk_write_with_compression(&dir_items, level)?;
+    dir.walk_write_with_compression(dir_items, level)?;
     let result = dir.next().next().next().finish_results().await?;
     Ok(result)
 }
@@ -118,20 +116,18 @@ async fn compress_then_encrypt<'a>(
 
 #[cfg(feature = "zstd")]
 async fn upload_dir_compress(
-    name: Arc<Mutex<String>>,
     curr_file_id: Rc<RefCell<u64>>,
     dir_items: &[DirectoryItem],
     car: car::Car<uploader::Uploader>,
     level: Option<i32>,
 ) -> Result<Vec<Cid>, Error> {
     let mut dir = dir::Dir::new(curr_file_id, car);
-    dir.walk_write_with_compression(&dir_items, level)?;
+    dir.walk_write_with_compression(dir_items, level)?;
     let result = dir.next().next().finish_results().await?;
     Ok(result)
 }
 #[cfg(not(feature = "zstd"))]
 async fn upload_dir_compress(
-    _: Arc<Mutex<String>>,
     _: Rc<RefCell<u64>>,
     _: &[DirectoryItem],
     _: car::Car<uploader::Uploader>,
@@ -163,7 +159,6 @@ async fn compress(
 }
 #[cfg(feature = "encryption")]
 async fn upload_dir_encrypt(
-    name: Arc<Mutex<String>>,
     curr_file_id: Rc<RefCell<u64>>,
     dir_items: &[DirectoryItem],
     car: car::Car<uploader::Uploader>,
@@ -171,13 +166,12 @@ async fn upload_dir_encrypt(
 ) -> Result<Vec<Cid>, Error> {
     let cipher = cipher::Cipher::new(password, car)?;
     let mut dir = dir::Dir::new(curr_file_id, cipher);
-    dir.walk_write(&dir_items)?;
+    dir.walk_write(dir_items)?;
     let result = dir.next().next().next().finish_results().await?;
     Ok(result)
 }
 #[cfg(not(feature = "encryption"))]
 async fn upload_dir_encrypt(
-    _: Arc<Mutex<String>>,
     _: Rc<RefCell<u64>>,
     _: &[DirectoryItem],
     _: car::Car<uploader::Uploader>,
@@ -216,11 +210,9 @@ pub async fn upload_dir(
     with_encryption: Option<&mut [u8]>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
-    let name = Arc::new(Mutex::new(dir_path.to_owned()));
     let uploader = uploader::Uploader::new(
         auth_token,
         dir_path.to_owned(),
-        Some(name.clone()),
         uploader::UploadType::Car,
         max_upload_concurrent,
         progress_listener,
@@ -244,11 +236,9 @@ pub async fn upload_dir(
             upload_dir_compress_then_encrypt(curr_file_id, &dir_items_rc, car, level, password)
                 .await?
         }
-        (Some(level), None) => {
-            upload_dir_compress(name, curr_file_id, &dir_items_rc, car, level).await?
-        }
+        (Some(level), None) => upload_dir_compress(curr_file_id, &dir_items_rc, car, level).await?,
         (None, Some(password)) => {
-            upload_dir_encrypt(name, curr_file_id, &dir_items_rc, car, password).await?
+            upload_dir_encrypt(curr_file_id, &dir_items_rc, car, password).await?
         }
         _ => {
             let mut dir = dir::Dir::new(curr_file_id, car);
@@ -260,16 +250,25 @@ pub async fn upload_dir(
     Ok(results)
 }
 
+fn get_file_name(path: &str) -> Option<String> {
+    let path = std::path::Path::new(path);
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(|x| x.to_owned())
+}
+
 pub async fn upload(
-    reader: &mut impl io::Read,
+    path: &str,
     auth_token: impl AsRef<str>,
-    name: impl AsRef<str>,
     max_upload_concurrent: usize,
     progress_listener: Option<uploader::ProgressListener>,
     with_car: Option<Option<usize>>,
     with_encryption: Option<&mut [u8]>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
+    let mut reader = File::open(path)?;
+    let name = get_file_name(path).unwrap_or_default();
+
     let mut writer = gen_single_file_uploader(
         auth_token,
         name,
@@ -280,12 +279,12 @@ pub async fn upload(
 
     let results = match (with_compression, with_encryption) {
         (Some(level), Some(password)) => {
-            compress_then_encrypt(reader, writer, level, password).await?
+            compress_then_encrypt(&mut reader, writer, level, password).await?
         }
-        (Some(level), None) => compress(reader, writer, level).await?,
-        (None, Some(password)) => encrypt(reader, writer, password).await?,
+        (Some(level), None) => compress(&mut reader, writer, level).await?,
+        (None, Some(password)) => encrypt(&mut reader, writer, password).await?,
         _ => {
-            io::copy(reader, &mut writer)?;
+            io::copy(&mut reader, &mut writer)?;
             writer.next_mut().flush()?;
             writer.next_mut().finish_results().await?
         }

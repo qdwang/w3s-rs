@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::Display,
-};
+use std::{collections::HashMap, fmt::Display};
 
 use reqwest::Client;
 use serde::Deserialize;
@@ -105,7 +102,7 @@ pub struct UserUploadsQuery {
 }
 impl AsRef<UserUploadsQuery> for UserUploadsQuery {
     fn as_ref(&self) -> &Self {
-        &self
+        self
     }
 }
 
@@ -118,7 +115,7 @@ impl UserUploadsQuery {
         before: Option<String>,
     ) -> Self {
         UserUploadsQuery {
-            before: before.unwrap_or("3000-01-01T00:00:00Z".to_string()),
+            before: before.unwrap_or_else(|| "3000-01-01T00:00:00Z".to_string()),
             sort_by: sort_by.unwrap_or(UserUploadsSortBy::Date),
             sort_order: sort_order.unwrap_or(UserUploadsSortOrder::Desc),
             page: page.unwrap_or(1),
@@ -126,13 +123,14 @@ impl UserUploadsQuery {
         }
     }
     fn gen_query(&self) -> Vec<(&'static str, String)> {
-        let mut ret = vec![];
+        let ret = vec![
+            ("before", self.before.clone()),
+            ("sortBy", self.sort_by.to_string()),
+            ("sortOrder", self.sort_order.to_string()),
+            ("page", self.page.to_string()),
+            ("size", self.size.to_string()),
+        ];
 
-        ret.push(("before", self.before.clone()));
-        ret.push(("sortBy", self.sort_by.to_string()));
-        ret.push(("sortOrder", self.sort_order.to_string()));
-        ret.push(("page", self.page.to_string()));
-        ret.push(("size", self.size.to_string()));
         ret
     }
 }

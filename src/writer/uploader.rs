@@ -5,7 +5,6 @@ use reqwest::{Body, Client};
 use serde::Deserialize;
 use std::{
     cmp, fmt,
-    fs::File,
     io, mem,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -48,7 +47,6 @@ pub type ProgressListener =
 pub struct Uploader {
     upload_type: UploadType,
     auth_token: Arc<String>,
-    sync_file_name: Arc<Mutex<String>>,
     w3s_name: Arc<String>,
     max_concurrent: usize,
     tasks: Vec<JoinHandle<Result<Cid, Error>>>,
@@ -60,17 +58,14 @@ impl Uploader {
     pub fn new(
         auth_token: String,
         w3s_name: String,
-        sync_file_name: Option<Arc<Mutex<String>>>,
         upload_type: UploadType,
         max_concurrent: usize,
         progress_listener: Option<ProgressListener>,
     ) -> Self {
-        let sync_file_name = sync_file_name.unwrap_or(Arc::new(Mutex::new(w3s_name.clone())));
         Uploader {
             upload_type,
             auth_token: Arc::new(auth_token),
             w3s_name: Arc::new(w3s_name),
-            sync_file_name,
             max_concurrent,
             tasks: vec![],
             results: vec![],
@@ -91,9 +86,9 @@ impl Uploader {
     }
 
     pub async fn finish_results(&mut self) -> Result<Vec<Cid>, Error> {
-        let tasks = mem::replace(&mut self.tasks, vec![]);
+        let tasks = mem::take(&mut self.tasks);
 
-        let mut results = mem::replace(&mut self.results, vec![]);
+        let mut results = mem::take(&mut self.results);
 
         for task in tasks {
             results.push(task.await??);
@@ -103,7 +98,7 @@ impl Uploader {
     }
 
     pub async fn finish_any_result(&mut self) -> Result<Cid, Error> {
-        let tasks = mem::replace(&mut self.tasks, vec![]);
+        let tasks = mem::take(&mut self.tasks);
 
         let (result, remnant) = futures::future::select_ok(tasks).await?;
 

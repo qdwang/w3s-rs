@@ -1,15 +1,7 @@
 use anyhow::Result;
 use std::env;
-use std::fs::File;
 use std::sync::{Arc, Mutex};
 use w3s::helper;
-
-fn get_file_name(path: &String) -> Option<String> {
-    let path = std::path::Path::new(path);
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|x| Some(x.to_owned()))
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,6 +24,8 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
         Some(Arc::new(Mutex::new(|name, part, pos, total| {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
+        // Some(&mut b"abcd1234".to_owned()),
+        // Some(None),
         None,
         None,
     )

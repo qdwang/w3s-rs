@@ -32,7 +32,6 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
     let uploader = uploader::Uploader::new(
         auth_token.clone(),
         filename.clone(),
-        None,
         uploader::UploadType::Car,
         2,
         Some(Arc::new(Mutex::new(|name, part, pos, total| {

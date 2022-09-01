@@ -71,8 +71,7 @@ impl<W: io::Write> Downloader<W> {
                     .split('/')
                     .into_iter()
                     .last()
-                    .map(|x| x.parse::<u64>().ok())
-                    .flatten()
+                    .and_then(|x| x.parse::<u64>().ok())
             } else {
                 resp.content_length()
             }
@@ -86,7 +85,7 @@ impl<W: io::Write> Downloader<W> {
         if total_len == 0 || begin_offset != total_len {
             let mut written_len = begin_offset;
             while let Ok(Some(chunk)) = resp.chunk().await {
-                self.next_writer.write(chunk.as_ref())?;
+                self.next_writer.write_all(chunk.as_ref())?;
                 written_len += chunk.len();
 
                 if let Some(pl) = self.progress_listener.as_ref() {
@@ -102,7 +101,7 @@ impl<W: io::Write> Downloader<W> {
     }
 }
 
-impl<W :io::Write> io::Write for Downloader<W> {
+impl<W: io::Write> io::Write for Downloader<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(buf.len())
     }
@@ -111,7 +110,7 @@ impl<W :io::Write> io::Write for Downloader<W> {
     }
 }
 
-impl<W :io::Write> ChainWrite<W> for Downloader<W> {
+impl<W: io::Write> ChainWrite<W> for Downloader<W> {
     fn next(self) -> W {
         self.next_writer
     }

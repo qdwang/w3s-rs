@@ -24,7 +24,7 @@ fn files2blocks(
                 id_map.insert(*id, blocks.clone());
                 blocks_collector.extend(blocks);
             }
-            DirectoryItem::Directory(name, sub_items) => {
+            DirectoryItem::Directory(_, sub_items) => {
                 files2blocks(sub_items, id_map, blocks_collector);
             }
         }

@@ -132,11 +132,11 @@ impl<W: io::Write> Cipher<W> {
         salt: &[u8],
         nonce: &[u8],
     ) -> Result<(XChaCha20, Poly1305, Output), Error> {
-        let salt_string = SaltString::b64_encode(salt).map_err(|e| Error::PasswordHashError(e))?;
+        let salt_string = SaltString::b64_encode(salt).map_err(Error::PasswordHashError)?;
 
         let hashed_pwd = Argon2::default()
-            .hash_password(&pwd, &salt_string)
-            .map_err(|e| Error::PasswordHashError(e))?
+            .hash_password(pwd, &salt_string)
+            .map_err(Error::PasswordHashError)?
             .hash
             .ok_or(Error::HashResultError)?;
 
@@ -146,7 +146,7 @@ impl<W: io::Write> Cipher<W> {
     }
 
     fn update_mac(&mut self, buf: &[u8], keep_remnant: bool) {
-        let mut buf2mac = mem::replace(&mut self.remnant2mac, vec![]);
+        let mut buf2mac = mem::take(&mut self.remnant2mac);
         buf2mac.extend(buf);
 
         if keep_remnant {
@@ -217,14 +217,14 @@ impl<W: io::Write> io::Write for Cipher<W> {
                 prefix.extend(salt);
                 prefix.extend(nonce);
 
-                buf = &buf
+                buf = buf
                     .get(SALT_SIZE + NONCE_SIZE..)
                     .ok_or(Error::TooShortForNonce)?;
             } else {
                 prefix.extend(self.salt);
                 prefix.extend(self.nonce);
 
-                self.next_mut().write(&prefix)?;
+                self.next_mut().write_all(&prefix)?;
             }
 
             // use salt + nonce as associated_data to update the mac
@@ -234,15 +234,15 @@ impl<W: io::Write> io::Write for Cipher<W> {
         }
 
         if let Some(raw) = self.decryption.take() {
-            if raw.len() > 0 {
+            if !raw.is_empty() {
                 let decrypted = self.decrypt(&raw);
-                self.next_mut().write(&decrypted)?;
+                self.next_mut().write_all(&decrypted)?;
             }
             self.decryption = Some(buf.to_vec())
         } else {
-            let encrypted = self.encrypt(&buf);
+            let encrypted = self.encrypt(buf);
             // since the Upload writer shouldn't be the next one, there is no needs to handle the 0 written length condition.
-            self.next_mut().write(&encrypted)?;
+            self.next_mut().write_all(&encrypted)?;
         }
 
         Ok(buf_size)
@@ -251,8 +251,8 @@ impl<W: io::Write> io::Write for Cipher<W> {
     fn flush(&mut self) -> io::Result<()> {
         if let Some(raw) = self.decryption.take() {
             let (buf, tag) = raw.split_at(raw.len() - 16);
-            let decrypted = self.decrypt(&buf);
-            self.next_mut().write(&decrypted)?;
+            let decrypted = self.decrypt(buf);
+            self.next_mut().write_all(&decrypted)?;
             self.decryption = Some(tag.to_vec());
         }
 
@@ -268,7 +268,7 @@ impl<W: io::Write> io::Write for Cipher<W> {
                 )))?;
             }
         } else {
-            self.next_mut().write(&mac)?;
+            self.next_mut().write_all(&mac)?;
         }
 
         self.next_mut().flush()?;
