@@ -1,5 +1,4 @@
 use super::super::iroh_car;
-use super::dir::Dir;
 use super::*;
 use std::fmt::Display;
 use std::fs;
@@ -10,7 +9,7 @@ use cid::Cid;
 use ipld_pb::DagPbCodec;
 use iroh_car::CarHeader;
 use iroh_car::*;
-use multihash::{Code::Blake2b256, MultihashDigest};
+use multihash::{Code::Sha2_256, MultihashDigest};
 use quick_protobuf::message::MessageWrite;
 use quick_protobuf::Writer;
 use unixfs_v1::{PBLink, PBNode, UnixFs, UnixFsType};
@@ -122,7 +121,7 @@ pub struct UnixFsStruct {
 }
 impl UnixFsStruct {
     pub fn rip_data_with_cid(&mut self) -> (Cid, Vec<u8>) {
-        (self.cid.clone(), mem::replace(&mut self.data, vec![]))
+        (self.cid, mem::take(&mut self.data))
     }
 
     pub fn to_link(&self) -> PBLink {
@@ -165,7 +164,7 @@ fn empty_item() -> UnixFsStruct {
     }
     .to_vec();
 
-    let digest = Blake2b256.digest(&node_bytes);
+    let digest = Sha2_256.digest(&node_bytes);
     let cid = Cid::new_v1(DagPbCodec.into(), digest);
     UnixFsStruct {
         name: None,
@@ -179,7 +178,7 @@ pub fn gen_car_by_data(
     blocks: Vec<(Cid, Vec<u8>)>,
     root_struct: Option<UnixFsStruct>,
 ) -> Result<Vec<u8>, iroh_car::Error> {
-    let root = root_struct.unwrap_or(empty_item());
+    let root = root_struct.unwrap_or_else(empty_item);
     let header = CarHeader::new(vec![root.cid]);
 
     let mut buffer = Vec::with_capacity(MAX_CAR_SIZE);
@@ -198,14 +197,14 @@ pub fn gen_car(
     blocks: &mut [UnixFsStruct],
     root_struct: Option<UnixFsStruct>,
 ) -> Result<Vec<u8>, iroh_car::Error> {
-    let root = root_struct.unwrap_or(empty_item());
+    let root = root_struct.unwrap_or_else(empty_item);
     let header = CarHeader::new(vec![root.cid]);
 
     let mut buffer = Vec::with_capacity(MAX_CAR_SIZE);
     let mut writer = CarWriter::new(header, &mut buffer);
 
     for block in blocks {
-        let data = mem::replace(&mut block.data, vec![]);
+        let data = mem::take(&mut block.data);
         writer.write(block.cid, data)?;
     }
     writer.write(root.cid, root.data)?;
@@ -217,7 +216,7 @@ pub fn gen_car(
 pub fn gen_blocks(buf: Vec<u8>, block_size: usize) -> Vec<UnixFsStruct> {
     buf.chunks(block_size)
         .map(|chunk| {
-            let digest = Blake2b256.digest(chunk);
+            let digest = Sha2_256.digest(chunk);
             let cid = Cid::new_v1(0x55, digest);
             UnixFsStruct {
                 name: None,
@@ -248,7 +247,7 @@ pub fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
         .map(|x| {
             dir_size += x.size;
             PBLink {
-                Name: x.name.as_ref().map(|x| Cow::from(x)),
+                Name: x.name.as_ref().map(Cow::from),
                 Hash: Some(Cow::from(x.cid.to_bytes())),
                 Tsize: Some(x.size),
             }
@@ -261,7 +260,7 @@ pub fn gen_dir(name: Option<String>, items: &[UnixFsStruct]) -> UnixFsStruct {
     }
     .to_vec();
 
-    let digest = Blake2b256.digest(&node_bytes);
+    let digest = Sha2_256.digest(&node_bytes);
     let cid = Cid::new_v1(DagPbCodec.into(), digest);
 
     UnixFsStruct {
@@ -300,7 +299,7 @@ pub fn gen_pbnode_from_blocks(name: String, blocks: &[UnixFsStruct]) -> UnixFsSt
     }
     .to_vec();
 
-    let digest = Blake2b256.digest(&node_bytes);
+    let digest = Sha2_256.digest(&node_bytes);
     let cid = Cid::new_v1(DagPbCodec.into(), digest);
     UnixFsStruct {
         name: Some(name),
