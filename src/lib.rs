@@ -19,4 +19,5 @@ pub mod helper;
 pub mod writer;
 
 /// This module is from [https://github.com/n0-computer/iroh](https://github.com/n0-computer/iroh).
+#[allow(dead_code)]
 pub(crate) mod iroh_car;
