@@ -25,7 +25,7 @@ async fn download(url: &String, path: &String) -> Result<()> {
 
     let name = path;
 
-    let _ = helper::download(
+    helper::download(
         url,
         name,
         &mut file,
