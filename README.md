@@ -1,9 +1,60 @@
-![Crates.io](https://img.shields.io/crates/v/w3s?style=flat-square)
+[![w3s crate](https://img.shields.io/crates/v/w3s?style=flat-square)](https://crates.io/crates/w3s)
+[![w3s doc](https://img.shields.io/docsrs/w3s?style=flat-square)](https://docs.rs/w3s/latest/w3s/)
 
 # w3s
-A Rust crate to the Web3.Storage API.
+A Rust crate to the easily upload file or directory to Web3.Storage with optional encryption and compression.
 
-## How to use
+ ## Example
+
+ To upload a single file:
+ ```rust
+  let cid_result = w3s::helper::upload(
+     path,  // the file path 
+     auth_token,  // the api token created in web3.storage
+     2,  // max concurrent upload threads
+     Some(Arc::new(Mutex::new(|name, part, pos, total| {  // the progress listener
+         println!("name: {name} part:{part} {pos}/{total}");
+     }))),
+     Some(None),  // if packed in CAR with custom block size, `Some(None)` means packed in CAR with default 256K block size
+     Some(&mut b"abcd1234".to_owned()),  // if use encryption with password
+     Some(None),  // if use compression with zstd level, `Some(None)` means uses compression with zstd level at 10
+ )
+ .await?;
+ ```
+ 
+ To upload a directory:
+ ```rust
+ let cid_result = w3s::helper::upload_dir(
+     path,  // the folder path
+     None,  // file filter which can bypass specific files
+     auth_token,  // the api token created in web3.storage
+     2,  // max concurrent upload threads
+     Some(Arc::new(Mutex::new(|name, part, pos, total| {  // the progress listener
+         println!("name: {name} part:{part} {pos}/{total}");
+     }))),
+     None,  // if use encryption with password
+     None,  // if use compression with zstd level
+ )
+ .await?;
+ ```
+ 
+ To download a compressed and encrypted file from IPFS gateway:
+ ```rust
+ w3s::helper::download(
+     url,  // the whole url pointing to the file under the IPFS geteway
+     name,  // just a label that will later be passed to the progress listener
+     &mut file,  // file to written
+     Some(Arc::new(Mutex::new(|name, _, pos, total| {  // the progress listener
+         println!("name: {name} {pos}/{total}");
+     }))),
+     None,  // start offset which should be `None` for compressed or encrypted file
+     Some(b"abcd1234".to_vec()),  // use decryption with password
+     true,  // use decompression
+ )
+ .await?;
+ ```
+
+## Details about how to use
 Please check the [examples/](examples/) folder for different usage examples.
 
 ## TODO
