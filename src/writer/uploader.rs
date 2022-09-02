@@ -1,3 +1,4 @@
+//! Handles upload tasks
 use cid::Cid;
 use core::task::Poll;
 use futures::TryFutureExt;

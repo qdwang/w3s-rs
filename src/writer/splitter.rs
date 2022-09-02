@@ -1,3 +1,4 @@
+//! Handles upload limitation by auto splitting bytes to 100MiB pieces. Only useful for None CAR file uploading. 
 use super::*;
 use std::io;
 use std::mem;

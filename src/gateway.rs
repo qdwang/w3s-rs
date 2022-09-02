@@ -5,6 +5,7 @@ use futures::{future, future::select_all, FutureExt, TryFutureExt};
 use reqwest::Client;
 use std::time::{Duration, Instant};
 
+/// Checks all the public gateways HEAD with a specific cid. It will return all responses with a status code of 200.
 pub async fn check_gateways_by_cid(
     cid: &str,
     custom_timeout_secs: Option<u64>,

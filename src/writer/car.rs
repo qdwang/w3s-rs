@@ -1,3 +1,5 @@
+//! Handles CAR file generation from bytes
+//! 
 use super::super::iroh_car;
 use super::*;
 use car_util::*;

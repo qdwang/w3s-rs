@@ -1,3 +1,8 @@
+//! Structs and HTTP API utilities
+//! 
+//! Includes some APIs listed in <https://web3.storage/docs/reference/http-api/>.
+//! 
+
 use std::{collections::HashMap, fmt::Display};
 
 use reqwest::Client;
@@ -141,6 +146,7 @@ impl StorageItem {
     }
 }
 
+/// Retrieve HTTP headers regarding a CAR
 pub async fn check_car_head(cid: &str) -> Result<HashMap<String, String>, Error> {
     let header = Client::new()
         .head(format!("https://api.web3.storage/car/{}", cid))
@@ -160,6 +166,7 @@ pub async fn check_car_head(cid: &str) -> Result<HashMap<String, String>, Error>
     Ok(result)
 }
 
+/// Retrieve information about an upload
 pub async fn status_of_cid(cid: &str) -> Result<Status, Error> {
     let result = Client::new()
         .get(format!("https://api.web3.storage/status/{}", cid))
@@ -175,6 +182,7 @@ pub async fn status_of_cid(cid: &str) -> Result<Status, Error> {
     Ok(status)
 }
 
+/// List previous uploads
 pub async fn fetch_uploads(
     auth_token: impl Display,
     query: impl AsRef<UserUploadsQuery>,
@@ -195,6 +203,7 @@ pub async fn fetch_uploads(
     Ok(items)
 }
 
+/// Retrieve an IPFS DAG (Directed Acyclic Graph) packaged in a CAR file
 pub async fn retrieve_car(cid: &str) -> Result<Vec<u8>, Error> {
     let result = Client::new()
         .get(format!("https://api.web3.storage/car/{}", cid))

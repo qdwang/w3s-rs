@@ -1,3 +1,5 @@
+//! Uploading and downloading helper functions which connects writers
+//! 
 use cid::Cid;
 use thiserror::Error;
 
@@ -201,6 +203,7 @@ async fn encrypt<'a>(
     Err(Error::FeatureNoCipher)
 }
 
+/// Uploads a entire directory recursively with optional encryption and compression
 pub async fn upload_dir(
     dir_path: &str,
     file_filter: Option<fn(name: &str, is_file: bool) -> bool>,
@@ -257,6 +260,7 @@ fn get_file_name(path: &str) -> Option<String> {
         .map(|x| x.to_owned())
 }
 
+/// Uploads a single file with optional encryption and compression
 pub async fn upload(
     path: &str,
     auth_token: impl AsRef<str>,
@@ -330,6 +334,7 @@ fn decompress<W: io::Write>(_: W) -> Result<W, Error> {
     Err(Error::FeatureNoZstd)
 }
 
+/// Download a single file with optional decryption and decompression
 pub async fn download(
     url: impl AsRef<str>,
     name: impl AsRef<str>,

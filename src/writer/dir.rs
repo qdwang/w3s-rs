@@ -1,3 +1,5 @@
+//! Handles recursive walks in a directory and writes file bytes to the next writer
+//! 
 use super::*;
 use car_util::DirectoryItem;
 use std::cell::RefCell;

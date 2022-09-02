@@ -1,3 +1,4 @@
+//! Handles cid file downloading
 use super::{uploader::ProgressListener, ChainWrite};
 use reqwest::Client;
 use thiserror::Error;

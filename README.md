@@ -20,8 +20,8 @@ Please check the [examples/](examples/) folder for different usage examples.
 - [x] Single file/car download with decompression and decryption
 - [x] Directory upload by CAR writer
 - [x] Directory upload with compression and encryption
-- [ ] Code comments
-- [ ] Documentation
+- [x] Code comments
+- [x] Documentation
 
 ## Chain writer
 The w3s crate contains several writers for the upload tasks. You can put writers according to your needs.

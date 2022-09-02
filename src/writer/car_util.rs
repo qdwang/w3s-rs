@@ -1,3 +1,5 @@
+//! Useful utilities for CAR file generating.
+//! 
 use super::super::iroh_car;
 use super::*;
 use std::fmt::Display;
