@@ -3,8 +3,9 @@ edition = "2021"
 name = "w3s"
 version = "0.2.0"
 license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/w3s"
 repository = "https://github.com/qdwang/w3s-rs"
-description = "A Rust crate to the Web3.Storage API"
+description = "A Rust crate to the easily upload file or directory to Web3.Storage with optional encryption and compression"
 
 [dev-dependencies]
 anyhow = "1"

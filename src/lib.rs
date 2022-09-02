@@ -1,4 +1,4 @@
-//! `w3s` is a crate to help users to upload file and directory to <https://web3.storage/> more easily.
+//! `w3s` is a Rust crate to the easily upload file or directory to Web3.Storage with optional encryption and compression.
 //!
 //! These features are supported:
 //! * web3.storage API accessing.
