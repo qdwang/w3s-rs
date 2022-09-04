@@ -46,7 +46,7 @@ zstd = { version = "0.11", optional = true }
 
 [features]
 encryption = ["rand", "argon2", "chacha20", "poly1305", "aead", "zeroize"]
-
+all = ["zstd", "encryption"]
 
 # examples
 [[example]]
