@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/w3s"
 repository = "https://github.com/qdwang/w3s-rs"
 description = "A Rust crate to the easily upload file or directory to Web3.Storage with optional encryption and compression"
-keywords = ["w3s", "ipfs", "filecoin", "web3.storage", "web3"]
+keywords = ["w3s", "ipfs", "filecoin", "web3storage", "web3"]
 categories = ["api-bindings", "accessibility"]
 
 [dev-dependencies]
