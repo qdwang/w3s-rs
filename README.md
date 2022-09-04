@@ -4,7 +4,13 @@
 # w3s
 A Rust crate to the easily upload file or directory to Web3.Storage with optional encryption and compression.
 
- ## Example
+## Usage
+Add the following line to your Cargo.toml file:
+```
+w3s = { version = "0.2", features = ["all"] }
+```
+
+## Example
 
  To upload a single file:
  ```rust
