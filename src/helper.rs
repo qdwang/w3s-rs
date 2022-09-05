@@ -72,9 +72,9 @@ async fn upload_dir_compress_then_encrypt(
     dir_items: &[DirectoryItem],
     car: car::Car<uploader::Uploader>,
     level: Option<i32>,
-    password: &mut [u8],
+    mut password: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
-    let cipher = cipher::Cipher::new(password, car)?;
+    let cipher = cipher::Cipher::new(&mut password, car)?;
     let mut dir = dir::Dir::new(curr_file_id, cipher);
     dir.walk_write_with_compression(dir_items, level)?;
     let result = dir.next().next().next().finish_results().await?;
@@ -86,19 +86,19 @@ async fn upload_dir_compress_then_encrypt(
     _: &[DirectoryItem],
     _: car::Car<uploader::Uploader>,
     _: Option<i32>,
-    _: &mut [u8],
+    _: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
     Err(Error::FeatureNoCipherAndZstd)
 }
 
 #[cfg(all(feature = "zstd", feature = "encryption"))]
-async fn compress_then_encrypt<'a>(
-    reader: &'a mut impl io::Read,
+async fn compress_then_encrypt(
+    reader: &mut impl io::Read,
     writer: Box<dyn ChainWrite<uploader::Uploader>>,
     level: Option<i32>,
-    password: &'a mut [u8],
+    mut password: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
-    let cipher = cipher::Cipher::new(password, writer)?;
+    let cipher = cipher::Cipher::new(&mut password, writer)?;
     let mut compressor = zstd::stream::Encoder::new(cipher, level.unwrap_or(10))?;
     io::copy(reader, &mut compressor)?;
     let mut cipher = compressor.finish()?;
@@ -107,11 +107,11 @@ async fn compress_then_encrypt<'a>(
     Ok(ret)
 }
 #[cfg(not(all(feature = "zstd", feature = "encryption")))]
-async fn compress_then_encrypt<'a>(
-    _: &'a mut impl io::Read,
+async fn compress_then_encrypt(
+    _: &mut impl io::Read,
     _: Box<dyn ChainWrite<uploader::Uploader>>,
     _: Option<i32>,
-    _: &'a mut [u8],
+    _: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
     Err(Error::FeatureNoCipherAndZstd)
 }
@@ -164,9 +164,9 @@ async fn upload_dir_encrypt(
     curr_file_id: Rc<RefCell<u64>>,
     dir_items: &[DirectoryItem],
     car: car::Car<uploader::Uploader>,
-    password: &mut [u8],
+    mut password: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
-    let cipher = cipher::Cipher::new(password, car)?;
+    let cipher = cipher::Cipher::new(&mut password, car)?;
     let mut dir = dir::Dir::new(curr_file_id, cipher);
     dir.walk_write(dir_items)?;
     let result = dir.next().next().next().finish_results().await?;
@@ -177,28 +177,28 @@ async fn upload_dir_encrypt(
     _: Rc<RefCell<u64>>,
     _: &[DirectoryItem],
     _: car::Car<uploader::Uploader>,
-    _: &mut [u8],
+    _: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
     Err(Error::FeatureNoCipher)
 }
 
 #[cfg(feature = "encryption")]
-async fn encrypt<'a>(
-    reader: &'a mut impl io::Read,
+async fn encrypt(
+    reader: &mut impl io::Read,
     writer: Box<dyn ChainWrite<uploader::Uploader>>,
-    password: &'a mut [u8],
+    mut password: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
-    let mut cipher = cipher::Cipher::new(password, writer)?;
+    let mut cipher = cipher::Cipher::new(&mut password, writer)?;
     io::copy(reader, &mut cipher)?;
     cipher.flush()?;
     let ret = cipher.next_mut().next_mut().finish_results().await?;
     Ok(ret)
 }
 #[cfg(not(feature = "encryption"))]
-async fn encrypt<'a>(
-    _: &'a mut impl io::Read,
+async fn encrypt(
+    _: &mut impl io::Read,
     _: Box<dyn ChainWrite<uploader::Uploader>>,
-    _: &'a mut [u8],
+    _: Vec<u8>,
 ) -> Result<Vec<Cid>, Error> {
     Err(Error::FeatureNoCipher)
 }
@@ -210,7 +210,7 @@ pub async fn upload_dir(
     auth_token: String,
     max_upload_concurrent: usize,
     progress_listener: Option<uploader::ProgressListener>,
-    with_encryption: Option<&mut [u8]>,
+    with_encryption: Option<Vec<u8>>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
     let uploader = uploader::Uploader::new(
@@ -267,7 +267,7 @@ pub async fn upload(
     max_upload_concurrent: usize,
     progress_listener: Option<uploader::ProgressListener>,
     with_car: Option<Option<usize>>,
-    with_encryption: Option<&mut [u8]>,
+    with_encryption: Option<Vec<u8>>,
     with_compression: Option<Option<i32>>,
 ) -> Result<Vec<Cid>, Error> {
     let mut reader = File::open(path)?;

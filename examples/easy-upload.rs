@@ -24,7 +24,7 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
         Some(None),
-        Some(&mut b"abcd1234".to_owned()),
+        Some(b"abcd1234".to_vec()),
         Some(None),
     )
     .await?;

@@ -24,8 +24,6 @@ async fn upload(path: &String, auth_token: &String) -> Result<()> {
         Some(Arc::new(Mutex::new(|name, part, pos, total| {
             println!("name: {name} part:{part} {pos}/{total}");
         }))),
-        // Some(&mut b"abcd1234".to_owned()),
-        // Some(None),
         None,
         None,
     )
