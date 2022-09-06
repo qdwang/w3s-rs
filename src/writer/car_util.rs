@@ -1,5 +1,5 @@
 //! Useful utilities for CAR file generating.
-//! 
+//!
 use super::super::iroh_car;
 use super::*;
 use std::fmt::Display;
@@ -147,9 +147,13 @@ impl Display for UnixFsStruct {
 }
 
 /// Detect if a list of Cids contains one empty item
-pub fn contains_empty_item(lst: &[Cid]) -> bool {
+pub fn find_empty_item(lst: &[Cid]) -> Option<Cid> {
     let cid = empty_item().cid;
-    lst.iter().any(|x| *x == cid)
+    if lst.iter().any(|x| *x == cid) {
+        Some(cid)
+    } else {
+        None
+    }
 }
 
 /// blake2b: bafykbzacebrixudpac7a56ypc7lxhwqe5nyvvmyc6mhurq4pc3zmsmymr2cum
