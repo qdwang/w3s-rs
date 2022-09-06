@@ -1,5 +1,5 @@
 //! Handles CAR file generation from bytes
-//! 
+//!
 use super::super::iroh_car;
 use super::*;
 use car_util::*;
@@ -60,6 +60,20 @@ impl<W: io::Write> Car<W> {
         }
     }
 
+    fn check_self_blocks_overflow_index(&self) -> Option<usize> {
+        let mut size = 0;
+        let mut result = None;
+        for (i, (_, block)) in self.blocks.iter().enumerate() {
+            size += block.len();
+            if size >= car_util::MAX_CAR_SIZE {
+                result = Some(i);
+                break;
+            }
+        }
+
+        result
+    }
+
     fn gen_car_from_buf(&mut self, buf: Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
         let remote_id = *self.remote_file_id.borrow();
         let mut blocks = gen_blocks(buf, self.block_size);
@@ -74,9 +88,9 @@ impl<W: io::Write> Car<W> {
             self.id_map.insert(remote_id, blocks);
         }
 
-        if self.blocks.len() >= car_util::MAX_CAR_SIZE / self.block_size {
+        if let Some(split_index) = self.check_self_blocks_overflow_index() {
             let mut blocks = mem::take(&mut self.blocks);
-            let remain_blocks = blocks.split_off(car_util::MAX_CAR_SIZE / self.block_size);
+            let remain_blocks = blocks.split_off(split_index);
             let car = gen_car_by_data(blocks, None)?;
             self.blocks = remain_blocks;
             Ok(Some(car))
@@ -131,6 +145,7 @@ impl<W: io::Write> io::Write for Car<W> {
 
         // final flush
         if self.files_count == self.id_map.len() {
+            // collect dir structure recursively to blocks
             let mut blocks = vec![];
             let root_blocks: Vec<_> = self
                 .dir_items
@@ -140,6 +155,7 @@ impl<W: io::Write> io::Write for Car<W> {
 
             let root = gen_dir(None, &root_blocks);
 
+            // merge previous remaining data blocks with deep dir structure blocks
             self.blocks
                 .extend(blocks.iter_mut().map(|x| x.rip_data_with_cid()));
 
