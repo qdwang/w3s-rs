@@ -289,7 +289,7 @@ pub async fn upload(
         (None, Some(password)) => encrypt(&mut reader, writer, password).await?,
         _ => {
             io::copy(&mut reader, &mut writer)?;
-            writer.next_mut().flush()?;
+            writer.flush()?;
             writer.next_mut().finish_results().await?
         }
     };
