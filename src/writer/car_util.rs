@@ -146,7 +146,14 @@ impl Display for UnixFsStruct {
     }
 }
 
-/// bafykbzacebrixudpac7a56ypc7lxhwqe5nyvvmyc6mhurq4pc3zmsmymr2cum
+/// Detect if a list of Cids contains one empty item
+pub fn contains_empty_item(lst: &[Cid]) -> bool {
+    let cid = empty_item().cid;
+    lst.iter().any(|x| *x == cid)
+}
+
+/// blake2b: bafykbzacebrixudpac7a56ypc7lxhwqe5nyvvmyc6mhurq4pc3zmsmymr2cum
+/// sha2-256: bafybeih5bpd2dhazdwycgx5czs4xj3k7g7qtgatxotbi5enslwjbz7nrfe
 fn empty_item() -> UnixFsStruct {
     let data_bytes = UnixFs {
         Type: UnixFsType::Raw,
