@@ -266,17 +266,24 @@ pub async fn gateway_page_parse(
     let dom = tl::parse(&html, tl::ParserOptions::default()).ok()?;
     let parser = dom.parser();
 
-    let mut sub_items = vec![];
+    let mut paths = vec![];
     for handle in dom.query_selector("td")?.skip(5).step_by(4) {
         let node = handle.get(parser)?;
-        sub_items.push(node.inner_text(parser).trim().to_owned());
+        let path = format!("{}/{}", path, node.inner_text(parser).trim());
+        paths.push(path);
     }
 
-    let mut results = Vec::with_capacity(sub_items.len());
-    for item in sub_items {
-        let cid_item =
-            cid_url_check(domain, &format!("{}/{}", path, item), progress_listener).await;
-        results.push(cid_item);
+    let mut paths_futures = paths
+        .iter()
+        .map(|path| cid_url_check(domain, path, progress_listener))
+        .collect::<Vec<_>>();
+
+    let mut results = Vec::with_capacity(paths.len());
+    while !paths_futures.is_empty() {
+        let (result, _, remain) = select_all(paths_futures).await;
+        paths_futures = remain;
+
+        results.push(result);
     }
 
     Some(results)
