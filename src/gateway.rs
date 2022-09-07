@@ -60,6 +60,9 @@ pub async fn check_gateways_by_cid(
 /// This function is inspired from [public-gateway-checker](https://ipfs.github.io/public-gateway-checker/).
 /// * `custom_timeout_secs`: Specify the custom timeout seconds for a check. The default timeout seconds is 3 seconds.
 pub async fn check_gateways(custom_timeout_secs: Option<u64>) -> Vec<(&'static str, f32)> {
+    const GATEWAY_CHECKER_CID: &str = "bafybeifx7yeb55armcsxwwitkymga5xf53dxiarykms3ygqic223w5sk3m";
+    const GATEWAY_CHECK_WORDS: &str = "Hello from IPFS Gateway Checker";
+
     let mut futures = GATEWAYS
         .iter()
         .enumerate()
@@ -193,6 +196,88 @@ static GATEWAYS: [&str; 92] = [
     "https://ipfs.litnet.work/ipfs/",
 ];
 
-const GATEWAY_CHECKER_CID: &str = "bafybeifx7yeb55armcsxwwitkymga5xf53dxiarykms3ygqic223w5sk3m";
+#[derive(Debug)]
+pub enum GatewayStruct {
+    Unknown(String),
+    File(String),
+    Directory(String, Option<Vec<GatewayStruct>>),
+}
 
-const GATEWAY_CHECK_WORDS: &str = "Hello from IPFS Gateway Checker";
+#[async_recursion::async_recursion(?Send)]
+pub async fn cid_url_check(
+    domain: &str,
+    path: &str,
+    progress_listener: Option<fn(&str, u16)>,
+) -> GatewayStruct {
+    let path_string = path.to_owned();
+    let url = format!("{}{}", domain, path);
+
+    if path.ends_with(".html") || path.ends_with(".htm") {
+        return GatewayStruct::File(path_string);
+    }
+
+    if let Some(resp) = Client::new().head(url).send().await.ok() {
+        let status_u16 = resp.status().as_u16();
+
+        if let Some(pl) = progress_listener {
+            pl(resp.url().as_str(), status_u16);
+        }
+
+        if status_u16 == 200 {
+            let content_type_val = resp
+                .headers()
+                .iter()
+                .find(|(name, _)| name.as_str() == "content-type")
+                .and_then(|(_, val)| val.to_str().ok());
+
+            if let Some("text/html") = content_type_val {
+                GatewayStruct::Directory(
+                    path_string,
+                    gateway_page_parse(domain, path, progress_listener).await,
+                )
+            } else {
+                GatewayStruct::File(path_string)
+            }
+        } else {
+            GatewayStruct::Unknown(path_string)
+        }
+    } else {
+        GatewayStruct::Unknown(path_string)
+    }
+}
+
+#[async_recursion::async_recursion(?Send)]
+pub async fn gateway_page_parse(
+    domain: &str,
+    path: &str,
+    progress_listener: Option<fn(&str, u16)>,
+) -> Option<Vec<GatewayStruct>> {
+    let url = format!("{}{}", domain, path);
+
+    let html = Client::new()
+        .get(url)
+        .send()
+        .await
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+
+    let dom = tl::parse(&html, tl::ParserOptions::default()).ok()?;
+    let parser = dom.parser();
+
+    let mut sub_items = vec![];
+    for handle in dom.query_selector("td")?.skip(5).step_by(4) {
+        let node = handle.get(parser)?;
+        sub_items.push(node.inner_text(parser).trim().to_owned());
+    }
+
+    let mut results = Vec::with_capacity(sub_items.len());
+    for item in sub_items {
+        let cid_item =
+            cid_url_check(domain, &format!("{}/{}", path, item), progress_listener).await;
+        results.push(cid_item);
+    }
+
+    Some(results)
+}
