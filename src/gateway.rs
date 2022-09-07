@@ -216,7 +216,7 @@ pub async fn cid_url_check(
         return GatewayStruct::File(path_string);
     }
 
-    if let Some(resp) = Client::new().head(url).send().await.ok() {
+    if let Ok(resp) = Client::new().head(url).send().await {
         let status_u16 = resp.status().as_u16();
 
         if let Some(pl) = progress_listener {
