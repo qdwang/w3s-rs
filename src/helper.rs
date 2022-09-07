@@ -1,14 +1,17 @@
 //! Uploading and downloading helper functions which connects writers
-//! 
+//!
 use cid::Cid;
 use thiserror::Error;
 
 use crate::writer::car_util::DirectoryItem;
 
+use super::gateway::*;
 use super::writer::*;
 use std::cell::RefCell;
+use std::fs;
 use std::fs::File;
 use std::io::{self, Write};
+use std::path::Path;
 use std::rc::Rc;
 
 #[derive(Error, Debug)]
@@ -21,6 +24,9 @@ pub enum Error {
     #[cfg(feature = "encryption")]
     #[error("Cipher error")]
     CipherError(#[from] cipher::Error),
+
+    #[error("Get filename error: {0}")]
+    FilenameError(String),
 
     #[error("Download error")]
     DownloadError(#[from] downloader::Error),
@@ -332,6 +338,79 @@ fn decompress<'a>(
 #[cfg(not(feature = "zstd"))]
 fn decompress<W: io::Write>(_: W) -> Result<W, Error> {
     Err(Error::FeatureNoZstd)
+}
+
+#[async_recursion::async_recursion(?Send)]
+async fn rec_download(
+    gs: GatewayStruct,
+    root: &Path,
+    url: &str,
+    progress_listener: Option<uploader::ProgressListener>,
+    with_decryption: Option<Vec<u8>>,
+    with_decompression: bool,
+) -> Result<(), Error> {
+    match gs {
+        GatewayStruct::File(path) => {
+            let f_path = root.join(&path);
+            if !f_path.exists() {
+                let f = File::create(&f_path)?;
+                let name = f_path
+                    .file_name()
+                    .and_then(|x| x.to_str())
+                    .ok_or_else(|| Error::FilenameError(path.clone()))?;
+
+                download(
+                    format!("{}{}", url, path),
+                    name,
+                    f,
+                    progress_listener,
+                    None,
+                    with_decryption,
+                    with_decompression,
+                )
+                .await?;
+            }
+        }
+        GatewayStruct::Directory(path, Some(sub_items)) => {
+            let dir_path = root.join(path);
+            fs::create_dir_all(dir_path)?;
+
+            for item in sub_items {
+                rec_download(
+                    item,
+                    root,
+                    url,
+                    progress_listener.clone(),
+                    with_decryption.clone(),
+                    with_decompression,
+                )
+                .await?
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Download the entire cid structure as local directory with optional decryption and decompression
+pub async fn download_dir(
+    url: &str,
+    save_to_folder: &str,
+    check_progress_listener: Option<fn(&str, u16)>,
+    progress_listener: Option<uploader::ProgressListener>,
+    with_decryption: Option<Vec<u8>>,
+    with_decompression: bool,
+) -> Result<(), Error> {
+    let cid_struct = cid_url_check(url, "", check_progress_listener).await;
+
+    fs::create_dir_all(save_to_folder)?;
+
+    let root = Path::new(save_to_folder);
+
+    rec_download(cid_struct, root, url, progress_listener, with_decryption, with_decompression).await?;
+
+    Ok(())
 }
 
 /// Download a single file with optional decryption and decompression

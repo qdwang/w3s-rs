@@ -209,7 +209,7 @@ pub async fn cid_url_check(
     path: &str,
     progress_listener: Option<fn(&str, u16)>,
 ) -> GatewayStruct {
-    let path_string = path.to_owned();
+    let path_string = path.strip_prefix("/").unwrap_or(path).to_owned();
     let url = format!("{}{}", domain, path);
 
     if path.ends_with(".html") || path.ends_with(".htm") {
