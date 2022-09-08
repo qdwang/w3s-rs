@@ -269,7 +269,8 @@ pub async fn gateway_page_parse(
     let mut paths = vec![];
     for handle in dom.query_selector("td")?.skip(5).step_by(4) {
         let node = handle.get(parser)?;
-        let path = format!("{}/{}", path, node.inner_text(parser).trim());
+        let inner_text = node.inner_text(parser);
+        let path = format!("{}/{}", path, html_escape::decode_html_entities(inner_text.trim()));
         paths.push(path);
     }
 
