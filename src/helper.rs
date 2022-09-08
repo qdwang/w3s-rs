@@ -402,13 +402,22 @@ pub async fn download_dir(
     with_decryption: Option<Vec<u8>>,
     with_decompression: bool,
 ) -> Result<(), Error> {
-    let cid_struct = cid_url_check(url, "", check_progress_listener).await;
+    let url = format!("{}{}", url, if url.ends_with("/") { "" } else { "/" });
+    let cid_struct = cid_url_check(&url, "", check_progress_listener).await;
 
     fs::create_dir_all(save_to_folder)?;
 
     let root = Path::new(save_to_folder);
 
-    rec_download(cid_struct, root, url, progress_listener, with_decryption, with_decompression).await?;
+    rec_download(
+        cid_struct,
+        root,
+        &url,
+        progress_listener,
+        with_decryption,
+        with_decompression,
+    )
+    .await?;
 
     Ok(())
 }
