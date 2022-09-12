@@ -26,7 +26,7 @@ pub enum Error {
     TooShortForSalt,
     #[error("No enough bytes for nonce.")]
     TooShortForNonce,
-    #[error("MAC tag error. The encrypted content may has been modified and is not valid.\n{0}")]
+    #[error("MAC tag error. This could be caused by an incorrect password or content being changed.\n{0}")]
     MacTagInvalid(String),
 }
 
